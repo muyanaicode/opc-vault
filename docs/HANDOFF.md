@@ -35,3 +35,7 @@
 
 ## 2026-11-08 · 第8轮
 - 推广物料：新增分享预览卡 assets/og.png（1200×630，沐言 AI 出品视觉）+ index.html og/twitter meta + README 首图；线上 /assets/og.png=200、index 含 og:image（X/即刻/群分享将显示专业卡片）。
+
+## 2026-11-08 · 第9轮
+- 安全/可靠性验证：导出加密备份（5214 实测）→ 702B、含 app/vault/meta.wrappedDEK，**无公司名明文（plaintextLeak=false）**。证明备份端到端加密、换设备需原主密码。
+- 至此「做透」关键项已验：三格式导入、刷新重解锁+持久化、导出加密、公开仓无密钥、顶部统计即时刷新。
