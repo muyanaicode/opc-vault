@@ -1222,13 +1222,13 @@ window.__ModuleLoader__.load({
       }
 
       /* ---------- CRUD ---------- */
-      function addSubject() { const s = { id: uid('s'), values: {} }; state.data.subjects.push(s); state.activeSubject = s.id; scheduleSave(); renderSubjects(); toast('已新建公司主体'); }
+      function addSubject() { const s = { id: uid('s'), values: {} }; state.data.subjects.push(s); state.activeSubject = s.id; scheduleSave(); renderApp(); toast('已新建公司主体'); }
       function deleteSubject(id) { if (!window.confirm('删除该主体？其与账套的关联也会一并解除（不影响账套本身）。')) return; state.data.subjects = state.data.subjects.filter((s) => s.id !== id); state.data.accountSets.forEach((a) => { if (a.subjectIds) a.subjectIds = a.subjectIds.filter((x) => x !== id); }); if (state.activeSubject === id) state.activeSubject = state.data.subjects[0] ? state.data.subjects[0].id : null; scheduleSave(); renderApp(); toast('已删除主体'); }
       function addAccount() {
         const subj = state.activeSubject ? getSubject(state.activeSubject) : null;
         const base = subj && subj.values.companyName ? subj.values.companyName : '新公司';
         const a = { id: uid('a'), values: { name: base + '·账套' + new Date().getFullYear() }, subjectIds: state.activeSubject ? [state.activeSubject] : [] };
-        state.data.accountSets.push(a); state.activeAccount = a.id; scheduleSave(); renderAccounts(); toast('已新建账套');
+        state.data.accountSets.push(a); state.activeAccount = a.id; scheduleSave(); renderApp(); toast('已新建账套');
       }
       function deleteAccount(id) { if (!window.confirm('删除该账套？')) return; state.data.accountSets = state.data.accountSets.filter((a) => a.id !== id); if (state.activeAccount === id) state.activeAccount = state.data.accountSets[0] ? state.data.accountSets[0].id : null; scheduleSave(); renderApp(); toast('已删除账套'); }
 

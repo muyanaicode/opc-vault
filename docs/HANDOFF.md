@@ -24,3 +24,7 @@
 - 线上持久化验证（GitHub Pages demo）：刷新后进入「解锁 OPC Vault」，输入主密码解锁后数据仍在（公司主体 1 持久化）——证明本地加密 + 每次打开校验（截图 verify-r5-persist.png）。
 - README / docs/LAUNCH.md 已并入「OPC 资源导航预览」链接（https://muyanaicode.github.io/vibenavi/，含 OPC Vault 条目）。
 - boyue.ai 阻塞确认：muyanaicode 账号仅 5 个仓、无对应 SPA 源码（无 boyue.ai 引用），发布源不在本账号/本机；需用户提供源码仓或部署命令。
+
+## 2026-11-08 · 第6轮
+- 修 dogfood 发现的真 bug：新建「公司主体/账套」后顶部统计不即时刷新（原用局部 renderSubjects/renderAccounts）→ 改 renderApp()，现 0→主体1→账套1·关联1 即时更新（本地 5210 ego 验证，截图 verify-r6-header.png）。
+- 已推送 main；GitHub Pages 演示会随构建更新。
