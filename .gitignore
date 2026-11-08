@@ -1,0 +1,21 @@
+# dependencies
+node_modules/
+
+# local secrets / vault exports (NEVER commit real data)
+*.vault
+*.vault.json
+export-*.json
+.env
+.env.*
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+
+# logs
+*.log
+
+# 验证截图（本地证据，不入开源库）
+/*.png

@@ -1,0 +1,28 @@
+{
+  "name": "@local/opc-vault",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "OPC Vault — 本地优先、端到端加密的企业资料管理器",
+  "exports": {
+    ".": "./index.js",
+    "./client": "./client.js",
+    "./locale/*.json": "./locale/*.json",
+    "./icon": "./icon.svg"
+  },
+  "files": [
+    "index.js",
+    "client.js",
+    "cordis.patch.yml",
+    "locale/*.json",
+    "icon.svg"
+  ],
+  "dsh": {
+    "bundle": { "patch": "./cordis.patch.yml" },
+    "client": {
+      "platform": "web",
+      "immediately": true,
+      "inject": []
+    }
+  }
+}

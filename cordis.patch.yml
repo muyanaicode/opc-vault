@@ -1,0 +1,4 @@
+# OPC Vault — inserts one Host row (the Client module owns all rendering).
+- insert:
+    - id: opc-vault
+      name: '@local/opc-vault'

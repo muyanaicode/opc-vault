@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64">
+  <defs>
+    <linearGradient id="opcv-shield" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#2f8ef0"/>
+      <stop offset="1" stop-color="#1b5fb8"/>
+    </linearGradient>
+  </defs>
+  <path d="M32 5 L55 13 V30 C55 45 44 55 32 60 C20 55 9 45 9 30 V13 Z"
+        fill="url(#opcv-shield)" stroke="#0f3d78" stroke-width="2" stroke-linejoin="round"/>
+  <circle cx="32" cy="27" r="6.5" fill="#ffffff"/>
+  <rect x="29.6" y="31" width="4.8" height="13" rx="2.4" fill="#ffffff"/>
+</svg>

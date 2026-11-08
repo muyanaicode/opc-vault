@@ -1,0 +1,73 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <title>OPC Vault · 企业资料与财税中枢</title>
+  <meta name="description" content="OPC Vault — 本地优先、端到端加密的企业资料与财税运营中枢。企业信息/财税/银行账户是基础，还可管理证照印章、资质知识产权、经营合规；支持主体⟷账套多对多、批量粘贴导入、Passkey/密码解锁。" />
+  <meta name="theme-color" content="#2b64e0" />
+  <link rel="manifest" href="./manifest.webmanifest" />
+  <link rel="icon" href="./icons/icon-192.png" />
+  <link rel="apple-touch-icon" href="./icons/apple-touch-icon.png" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+  <meta name="apple-mobile-web-app-title" content="OPC Vault" />
+  <style>
+    /* Standalone theme tokens (the Harness --dsw-alias-* tokens do not exist outside the host). */
+    :root {
+      color-scheme: light dark;
+      --dsw-alias-bg-base: #fbfbfc;
+      --dsw-alias-bg-layer-1: #ffffff;
+      --dsw-alias-bg-layer-2: #f4f5f7;
+      --dsw-alias-bg-overlay: #ffffff;
+      --dsw-alias-border-l1: #e7e9ee;
+      --dsw-alias-border-l2: #d5d9e1;
+      --dsw-alias-brand-primary: #2b64e0;
+      --dsw-alias-label-primary: #16181d;
+      --dsw-alias-label-secondary: #6b7280;
+      --dsw-alias-state-error-primary: #d92d20;
+      --dsw-alias-state-success-primary: #12805c;
+      --dsw-alias-state-warn-primary: #b25e09;
+      --dsw-alias-state-idle-primary: #9aa1aa;
+    }
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --dsw-alias-bg-base: #0f1115;
+        --dsw-alias-bg-layer-1: #171a20;
+        --dsw-alias-bg-layer-2: #1e2229;
+        --dsw-alias-bg-overlay: #1e2229;
+        --dsw-alias-border-l1: #262b33;
+        --dsw-alias-border-l2: #333a45;
+        --dsw-alias-brand-primary: #6ea0ff;
+        --dsw-alias-label-primary: #e7e9ee;
+        --dsw-alias-label-secondary: #98a1af;
+        --dsw-alias-state-error-primary: #ff6b6b;
+        --dsw-alias-state-success-primary: #3ddc97;
+        --dsw-alias-state-warn-primary: #f0b429;
+        --dsw-alias-state-idle-primary: #6b7280;
+      }
+    }
+    html, body { height: 100%; margin: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+      background: var(--dsw-alias-bg-base);
+      color: var(--dsw-alias-label-primary);
+      -webkit-font-smoothing: antialiased;
+    }
+    #root { height: 100%; }
+    #boot-fallback { padding: 28px; color: var(--dsw-alias-label-secondary); font-size: 13px; }
+  </style>
+</head>
+<body>
+  <div id="root"><div id="boot-fallback">正在加载 OPC Vault…</div></div>
+  <noscript>OPC Vault 需要启用 JavaScript。</noscript>
+  <script src="./app.js" defer></script>
+  <script>
+    if ('serviceWorker' in navigator && (location.protocol === 'https:' || location.hostname === 'localhost')) {
+      window.addEventListener('load', function () {
+        navigator.serviceWorker.register('./sw.js').catch(function (e) { console.warn('SW registration failed', e); });
+      });
+    }
+  </script>
+</body>
+</html>
