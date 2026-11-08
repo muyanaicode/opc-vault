@@ -14,3 +14,8 @@
 - 核心闭环实跑：批量导入 2 家（字段:值）→ 2 主体 + 2 账套 + 2 关联，识别预览正确（截图 verify-r2-bulkimport.png）。注：ego 里 deleteDatabase 会污染该 origin 的 IndexedDB，换端口即可（5200 干净）。
 - 发布：GitHub v0.1.0 Release + topics；docs/LAUNCH.md 出沐言 AI 发布文案（即刻/X、公众号、30s 口播）。
 - 阻碍：boyue.ai 线上是另一套 SPA 构建（引用 /assets/app.js，/data.json 返回 HTML），与本仓 vibenavi（fetch data.json）不一致，发布链路未确认，暂不擅改线上；待用户给源码/部署入口。
+
+## 2026-11-08 · 第3轮
+- 新增零安装在线试用：GitHub Pages → https://muyanaicode.github.io/opc-vault/（.nojekyll，main / 根目录；README 加「在线试用」入口）。
+- ego 实测线上：创建页正常、https 下 Passkey 可选、建库成功、顶栏「OPC 生态」按钮在（截图 verify-r3-pages.png）。
+- 仍待：boyue.ai 导航收录（线上为另一套 SPA 构建，发布链路未确认）；需用户给源码/部署入口。
