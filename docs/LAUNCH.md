@@ -9,7 +9,7 @@ OPC Vault：给一人公司(OPC)/小微/代账的「本地优先、端到端加�
 3. 开源免费：MIT，自托管 0 元；托管版（跨设备/团队）以后订阅，能力不阉割。
 
 - GitHub：https://github.com/muyanaicode/opc-vault
-- OPC 创业资源导航：https://boyue.ai
+- OPC 创业资源导航：https://boyue.ai ｜预览（含 OPC Vault）：https://muyanaicode.github.io/vibenavi/
 
 ## 即刻 / X 文案
 刚开源了 OPC Vault —— 一人公司的「加密账套金库」。

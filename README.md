@@ -133,7 +133,7 @@ OPC Vault 是入口：先解决「资料安全、随手可用」；当你需要�
 ## 社区与推广（OPC 创业资源）
 
 - **出品：沐言 AI**（OPC 系列工具）
-- **同门资源导航：[boyue.ai](https://boyue.ai)** ——「vibenavi」同心圆分类导航，收录 OPC / 一人公司创业所需的真实站点资源（公司注册、财税、银行、云与 SaaS、出海等），可与本工具搭配使用。
+- **同门资源导航：[boyue.ai](https://boyue.ai)**（OPC 分类预览：https://muyanaicode.github.io/vibenavi/） ——「vibenavi」同心圆分类导航，收录 OPC / 一人公司创业所需的真实站点资源（公司注册、财税、银行、云与 SaaS、出海等），可与本工具搭配使用。
 - 面向 OPC / 一人公司 / 小微企业与代账机构；欢迎在 GitHub Issues 反馈与共建。
 
 ## 免责声明
