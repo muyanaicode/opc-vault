@@ -19,3 +19,8 @@
 - 新增零安装在线试用：GitHub Pages → https://muyanaicode.github.io/opc-vault/（.nojekyll，main / 根目录；README 加「在线试用」入口）。
 - ego 实测线上：创建页正常、https 下 Passkey 可选、建库成功、顶栏「OPC 生态」按钮在（截图 verify-r3-pages.png）。
 - 仍待：boyue.ai 导航收录（线上为另一套 SPA 构建，发布链路未确认）；需用户给源码/部署入口。
+
+## 2026-11-08 · 第5轮
+- 线上持久化验证（GitHub Pages demo）：刷新后进入「解锁 OPC Vault」，输入主密码解锁后数据仍在（公司主体 1 持久化）——证明本地加密 + 每次打开校验（截图 verify-r5-persist.png）。
+- README / docs/LAUNCH.md 已并入「OPC 资源导航预览」链接（https://muyanaicode.github.io/vibenavi/，含 OPC Vault 条目）。
+- boyue.ai 阻塞确认：muyanaicode 账号仅 5 个仓、无对应 SPA 源码（无 boyue.ai 引用），发布源不在本账号/本机；需用户提供源码仓或部署命令。
