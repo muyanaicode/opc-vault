@@ -1,5 +1,7 @@
 # OPC Vault · 账套库
 
+![OPC Vault](assets/og.png)
+
 本地优先、端到端加密的**企业账套管理插件**，以 **DeepSeek Harness（DSH）插件**形式运行在 Harness Web UI 中。
 所有公司主体与账套资料只保存在你自己的机器上，用 AES‑256‑GCM 加密，永不离开本地。
 
