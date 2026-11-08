@@ -8,3 +8,9 @@
 - 验证：`node --check` index/client/app 全过；Host 路由已注册且鉴权生效（curl 未授权 401、未知路径 404 对照）；Client AI 路径在无 Host 的 PWA 下回退成功（ego，toast「规则 · 已创建 2 个…」、0 报错，截图 d3-ai-fallback.png）；营业执照识别端到端实测（截图 e4：上传→OCR→建主体，公司名/法人/注册资本/成立日期/公司类型/地址/经营范围/登记机关全对、0 报错）。**唯一未实测：已登录面板内的模型实调往返（ego 无 Harness 登录态），需用户点一次确认。**
 - 下一步（用户主导）：Hard-refresh Harness（⌘⇧R）→ 打开 OPC Vault → 顶部「批量导入」→ 粘一段乱文 → 点「AI 识别并创建（本地模型）」；随后 GitHub 开源 + 上架 DSH 插件生态；云端 APP/小程序（libsodium/age+Argon2id 二开）为后续 TODO。
 - 阻碍：Passkey 需以 `http://localhost` 或 HTTPS 打开 Harness（Chromium 拒绝 `127.0.0.1` IP 源做 WebAuthn）；已做可用性检测+置灰+提示，主密码不受影响。电子税务局子域可能随官方调整，字段可手动覆盖。
+
+## 2026-11-08 · 第2轮（本轮）
+- 收住范围：撤销未要求的 API Key/依赖功能页；仅保留「OPC 生态」引流入口（顶栏+概览行→弹窗三档），未改动核心金库逻辑。
+- 核心闭环实跑：批量导入 2 家（字段:值）→ 2 主体 + 2 账套 + 2 关联，识别预览正确（截图 verify-r2-bulkimport.png）。注：ego 里 deleteDatabase 会污染该 origin 的 IndexedDB，换端口即可（5200 干净）。
+- 发布：GitHub v0.1.0 Release + topics；docs/LAUNCH.md 出沐言 AI 发布文案（即刻/X、公众号、30s 口播）。
+- 阻碍：boyue.ai 线上是另一套 SPA 构建（引用 /assets/app.js，/data.json 返回 HTML），与本仓 vibenavi（fetch data.json）不一致，发布链路未确认，暂不擅改线上；待用户给源码/部署入口。

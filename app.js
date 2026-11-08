@@ -10,6 +10,7 @@
     const DB_STORE = 'kv';
     const IDLE_LOCK_MS = 5 * 60 * 1000;
     const TESSERACT_CDN = 'https://cdn.jsdelivr.net/npm/tesseract.js@5.1.0/dist/tesseract.min.js';
+    const OPC_ECOSYSTEM = { brand: '沐言 AI', nav: 'https://boyue.ai', businessOs: 'https://boyue.ai' };
 
     /* ============================ byte helpers ============================ */
     function randomBytes(n) { const b = new Uint8Array(n); crypto.getRandomValues(b); return b; }
@@ -858,6 +859,7 @@
         const bulkBtn = E('button', { class: 'opcv-btn', html: ICON.upload + '<span>批量导入</span>' }); bulkBtn.addEventListener('click', openBulkImport);
         const licenseBtn = E('button', { class: 'opcv-btn', html: ICON.scan + '<span>营业执照识别</span>' }); licenseBtn.addEventListener('click', openLicenseImport);
         bar.appendChild(licenseBtn); bar.appendChild(bulkBtn); bar.appendChild(exportBtn); bar.appendChild(importBtn); bar.appendChild(pwBtn);
+        const ecoBtn = E('button', { class: 'opcv-btn', text: 'OPC 生态' }); ecoBtn.addEventListener('click', openEcosystem); bar.appendChild(ecoBtn);
         if (!state.meta.passkey) {
           const pk = E('button', { class: 'opcv-btn', html: ICON.key + '<span>启用 Passkey</span>' });
           if (passkeyEligible()) { pk.addEventListener('click', enablePasskey); bar.appendChild(pk); }
@@ -902,6 +904,7 @@
         contentHost.appendChild(sum);
 
         contentHost.appendChild(E('div', { class: 'opcv-hint', text: 'OPC Vault 是企业资料与财税运营中枢：企业信息、财税、银行账户只是基础，还可管理证照印章、资质知识产权、经营合规等。公司主体是营业执照对应的法律实体；账套是独立核算的账务数据集。同一主体可对应多个账套，一个账套也可关联多个主体（多对多）。' }));
+        const ecoHint = E('div', { class: 'opcv-muted', style: 'margin:6px 0 14px;text-align:left;cursor:pointer;', text: '下一步：把资产、财务、订阅、文档接进来 → 了解 OPC 生态（Business OS / Agent）' }); ecoHint.addEventListener('click', openEcosystem); contentHost.appendChild(ecoHint);
 
         const c1 = E('div', { class: 'opcv-card' });
         c1.appendChild(E('div', { class: 'opcv-cardtitle', text: '公司主体' }));
@@ -1248,6 +1251,25 @@
         const esc = (e) => { if (e.key === 'Escape') close(); };
         document.addEventListener('keydown', esc); x.addEventListener('click', close); overlay.addEventListener('click', (e) => { if (e.target === overlay) close(); });
         build(body, close); return close;
+      }
+
+      /* ---------- OPC 生态（渐进引流，不打扰） ---------- */
+      function openEcosystem() {
+        openModal('OPC 生态 · 从个人金库到一人公司操作系统', (body) => {
+          const item = (title, desc, btnText, onClick, primary) => {
+            const row = E('div', { class: 'opcv-relrow' });
+            row.appendChild(E('div', { style: 'flex:1;min-width:0;' },
+              E('div', { class: 'opcv-relname', text: title }),
+              E('div', { class: 'opcv-muted', style: 'margin:4px 0 0;text-align:left;', text: desc })));
+            const b = E('button', { class: 'opcv-btn' + (primary ? ' opcv-primary' : ''), text: btnText });
+            b.addEventListener('click', onClick); row.appendChild(b); return row;
+          };
+          body.appendChild(E('div', { class: 'opcv-hint', text: 'OPC Vault 先把「资料安全、好用」做透；当你想把资产、财务、订阅、文档与自动化接进来时，再平滑升级到 OPC Business OS / Agent。' }));
+          body.appendChild(item('OPC Vault（当前）', '本地优先、端到端加密的公司主体与账套金库。', '已在用', () => {}, false));
+          body.appendChild(item('OPC Business OS · 内测预约', '一人公司操作系统：资产台账、财务账本、订阅、合同、经营分析、插件市场一体化。', '了解并预约', () => { try { window.open(OPC_ECOSYSTEM.businessOs, '_blank', 'noopener'); } catch (e) {} }, true));
+          body.appendChild(item('OPC 创业资源导航', 'boyue.ai：公司注册、财税、银行、云与 SaaS、出海等真实站点，同心圆分类。', '打开导航', () => { try { window.open(OPC_ECOSYSTEM.nav, '_blank', 'noopener'); } catch (e) {} }, false));
+          body.appendChild(E('div', { class: 'opcv-muted', style: 'margin:14px 0 0;text-align:center;', text: '由 ' + OPC_ECOSYSTEM.brand + ' 出品' }));
+        });
       }
 
       /* ---------- change pwd / passkey ---------- */
