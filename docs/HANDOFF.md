@@ -28,3 +28,7 @@
 ## 2026-11-08 · 第6轮
 - 修 dogfood 发现的真 bug：新建「公司主体/账套」后顶部统计不即时刷新（原用局部 renderSubjects/renderAccounts）→ 改 renderApp()，现 0→主体1→账套1·关联1 即时更新（本地 5210 ego 验证，截图 verify-r6-header.png）。
 - 已推送 main；GitHub Pages 演示会随构建更新。
+
+## 2026-11-08 · 第7轮
+- 导入格式实测（5213 干净环境）：无标签乱文 / TSV（Excel 粘贴）/ CSV 三种格式均正确识别 2 家（主体字段 4）。上一轮“TSV 失败”为测试串 \t 转义所致，非产品 bug，未改代码。
+- 公开仓安全检查：tracked 文件无 .vault/.pem/.key/.env，无 gho_/PRIVATE KEY/AKIA/xox 等密钥特征；LICENSE=MIT；README 含「在线试用/开源与托管」。
