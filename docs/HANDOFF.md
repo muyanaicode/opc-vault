@@ -32,3 +32,6 @@
 ## 2026-11-08 · 第7轮
 - 导入格式实测（5213 干净环境）：无标签乱文 / TSV（Excel 粘贴）/ CSV 三种格式均正确识别 2 家（主体字段 4）。上一轮“TSV 失败”为测试串 \t 转义所致，非产品 bug，未改代码。
 - 公开仓安全检查：tracked 文件无 .vault/.pem/.key/.env，无 gho_/PRIVATE KEY/AKIA/xox 等密钥特征；LICENSE=MIT；README 含「在线试用/开源与托管」。
+
+## 2026-11-08 · 第8轮
+- 推广物料：新增分享预览卡 assets/og.png（1200×630，沐言 AI 出品视觉）+ index.html og/twitter meta + README 首图；线上 /assets/og.png=200、index 含 og:image（X/即刻/群分享将显示专业卡片）。
