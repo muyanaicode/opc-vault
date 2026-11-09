@@ -59,3 +59,10 @@
 - 新增 agent/vault-mcp.mjs（MCP stdio）：vault_list_keys / vault_run_with_key / vault_test_key；返回元数据不含明文，未授权 Agent 被拒。
 - 验证：bridge list --tag 生产=1；run --agent agentB 被拒(exit4)、agentA 注入成功(12/1234)；MCP tools/list、list_keys、run_with_key 正常。
 - 安全：明文 Key 只在本地解密内存/子进程 env；主密码走 OPC_VAULT_PASSWORD，不进 argv/配置/日志。
+
+## 2026-11-09 · 第13轮（钥匙串启动器 + 注册 DSH MCP）
+- 主密码不落地：agent/install-keychain.sh 存入 macOS 钥匙串(service=opc-vault-mcp)；agent/vault-mcp-launch.sh 启动时从钥匙串读取并注入，绝不进配置/argv/日志。
+- agent/setup.sh：把最近一次「导出」复制到 ~/.opc-vault/agent-vault.json 并存钥匙串，一键就绪。
+- 注册：~/.dsh/cordis.patch.yml 追加 mcp-opc-vault（stdio，command=/bin/bash vault-mcp-launch.sh，env OPC_VAULT_FILE=~/.opc-vault/agent-vault.json）；已备份 .bak-opc-vault-<ts>，PyYAML+Ruby 双校验通过。
+- 验证：用测试 service 走钥匙串启动器 → MCP initialize/list_keys 正常；测试钥匙串项已删除。
+- 生效：需重启 DSH 才会加载 opc-vault MCP（当前会话未重启）。
