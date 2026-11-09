@@ -11,6 +11,15 @@
     const IDLE_LOCK_MS = 5 * 60 * 1000;
     const TESSERACT_CDN = 'https://cdn.jsdelivr.net/npm/tesseract.js@5.1.0/dist/tesseract.min.js';
     const OPC_ECOSYSTEM = { brand: '沐言 AI', nav: 'https://boyue.ai', businessOs: 'https://boyue.ai' };
+    // 税务档案字段（中国报税场景）
+    const TAX_FIELDS = [
+      { key: 'province', label: '省份/地区', placeholder: '如 北京' },
+      { key: 'taxpayer', label: '纳税人身份', placeholder: '小规模 / 一般纳税人' },
+      { key: 'method', label: '征收方式', placeholder: '查账 / 核定' },
+      { key: 'hasStaff', label: '是否代扣个税', placeholder: '有员工 / 仅法人' },
+      { key: 'zero', label: '是否零申报', placeholder: '是 / 否' },
+      { key: 'industry', label: '行业', placeholder: '如 信息技术服务' },
+    ];
 
     /* ============================ byte helpers ============================ */
     function randomBytes(n) { const b = new Uint8Array(n); crypto.getRandomValues(b); return b; }
@@ -761,7 +770,7 @@
             const meta = { app: 'opc-vault', v: 2, kdf: 'pbkdf2-sha256-600000', saltB64: bufToB64(salt), wrappedDEK: wrapped, createdAt: Date.now() };
             if (cb.checked && passkeyEligible()) { try { const pk = await registerPasskey(dek); if (pk.ok) meta.passkey = pk.record; else if (pk.reason === 'PRF_NOT_SUPPORTED') toast('此设备暂不支持 Passkey PRF，已跳过'); } catch (e) { toast('Passkey 未完成：' + (e && e.message ? e.message : e)); } }
             state.dek = dek; state.meta = meta;
-            state.data = { v: 2, subjects: [], accountSets: [], customFields: [], updatedAt: Date.now() };
+            state.data = { v: 2, subjects: [], accountSets: [], customFields: [], taxProfiles: {}, updatedAt: Date.now() };
             await idbSet('meta', meta); await saveNow();
             state.mode = 'app'; state.view = 'overview'; lastActivity = Date.now();
             render(); toast('账套库已创建，数据仅保存在本机');
@@ -818,12 +827,13 @@
       async function finishUnlock(dek) {
         state.dek = dek;
         const payload = await idbGet('vault');
-        let data = payload ? await decryptObject(dek, payload) : { v: 2, subjects: [], accountSets: [], customFields: [], updatedAt: Date.now() };
+        let data = payload ? await decryptObject(dek, payload) : { v: 2, subjects: [], accountSets: [], customFields: [], taxProfiles: {}, updatedAt: Date.now() };
         data = migrate(data);
         if (!data.subjects) data.subjects = [];
         if (!data.accountSets) data.accountSets = [];
         if (!data.customFields) data.customFields = [];
         state.data = data;
+        if (!state.data.taxProfiles) state.data.taxProfiles = {};
         state.mode = 'app'; state.view = 'overview'; lastActivity = Date.now();
         render();
       }
@@ -874,7 +884,7 @@
 
         // tabs
         tabsHost = E('div', { class: 'opcv-tabs' });
-        [['overview', '概览'], ['subjects', '公司主体'], ['accounts', '账套'], ['relations', '关系']].forEach(([v, label]) => {
+        [['overview', '概览'], ['subjects', '公司主体'], ['accounts', '账套'], ['relations', '关系'], ['tax', '税务']].forEach(([v, label]) => {
           const t = E('button', { class: 'opcv-tab' + (state.view === v ? ' active' : ''), text: label });
           t.addEventListener('click', () => { state.view = v; renderApp(); });
           tabsHost.appendChild(t);
@@ -888,6 +898,7 @@
         if (state.view === 'overview') renderOverview();
         else if (state.view === 'subjects') renderSubjects();
         else if (state.view === 'accounts') renderAccounts();
+        else if (state.view === 'tax') renderTax();
         else renderRelations();
       }
 
@@ -981,6 +992,96 @@
         }
         split.appendChild(detail);
         contentHost.appendChild(split);
+      }
+
+      /* ---------- 税务（中国报税） ---------- */
+      function ymd(d){ const z=n=>String(n).padStart(2,'0'); return d.getFullYear()+'-'+z(d.getMonth()+1)+'-'+z(d.getDate()); }
+      function adjustWeekend(d){ const w=d.getDay(); if(w===6)d.setDate(d.getDate()+2); else if(w===0)d.setDate(d.getDate()+1); return d; }
+      function daysLeftOf(due){ const t=new Date(); t.setHours(0,0,0,0); const dd=new Date(due); dd.setHours(0,0,0,0); return Math.round((dd-t)/86400000); }
+      function nextMonth15(now){ let y=now.getFullYear(),m=now.getMonth(); let d=new Date(y,m,15); if(now.getDate()>15) d=new Date(y,m+1,15); return adjustWeekend(d); }
+      function nextQuarter15(now){ const qEnds=[2,5,8,11]; for(const qe of qEnds){ const due=new Date(now.getFullYear(),qe+1,15); if(due>=now) return adjustWeekend(due); } return adjustWeekend(new Date(now.getFullYear()+1,3,15)); }
+      function annualDue(now,month0,day){ let y=now.getFullYear(); let d=new Date(y,month0,day); if(d<now) d=new Date(y+1,month0,day); return adjustWeekend(d); }
+      function getTaxProfile(id){
+        state.data.taxProfiles = state.data.taxProfiles || {};
+        let p=state.data.taxProfiles[id];
+        if(!p){ const sub=getSubject(id); p={ values:{ province:(sub&&sub.values.region)||'北京', taxpayer:'小规模', method:'查账', hasStaff:'有员工', zero:'否', industry:'' } }; state.data.taxProfiles[id]=p; }
+        return p;
+      }
+      function buildTaxTasks(p, now){
+        const v=p.values||{}; const general=/一般/.test(v.taxpayer||''); const staff=!/无|否|仅法人/.test(v.hasStaff||'有员工') && !/仅法人/.test(v.hasStaff||'');
+        const q=nextQuarter15(now), m=nextMonth15(now);
+        const tasks=[]; const add=(name,system,cadence,due,link,note)=>{ const dl=daysLeftOf(due); tasks.push({name,system,cadence,due:ymd(due),daysLeft:dl,status:dl<0?'overdue':dl<=7?'soon':'ok',link:link,note:note||''}); };
+        const ent=regionUrl(v.province||'北京');
+        const personal='https://etax.chinatax.gov.cn';
+        if(staff) add('工资薪金个税（代扣代缴）','自然人电子税务局 · 扣缴端','每月',m,personal,'先做（橙线）');
+        if(general) add('增值税及附加（一般纳税人·月报）','电子税务局 · 企业业务','每月',m,ent);
+        else add('增值税及附加（小规模·季报）','电子税务局 · 企业业务','每季',q,ent);
+        add('企业所得税（季度预缴）','电子税务局 · 企业业务','每季',q,ent);
+        add('财务报表（季报）','电子税务局 · 企业业务','每季',q,ent);
+        add('财产和行为税 / 印花税（合并申报）','电子税务局 · 企业业务','每季',q,ent);
+        if(staff) add('社保 / 公积金申报缴纳','当地社保/公积金平台','每月',m,ent);
+        add('企业所得税汇算清缴（上年度）','电子税务局 · 企业业务','每年',annualDue(now,4,31),ent);
+        add('个人所得税经营所得汇算（上年度）','自然人电子税务局','每年',annualDue(now,2,31),personal);
+        add('工商年报（上年度）','国家企业信用信息公示系统','每年',annualDue(now,5,30),'https://www.gsxt.gov.cn');
+        tasks.sort((a,b)=>a.daysLeft-b.daysLeft);
+        if(/零/.test(v.zero||'')) tasks.forEach(t=>{ t.note=(t.note?t.note+'；':'')+'零申报也需按期提交'; });
+        return tasks;
+      }
+      function taxDueAll(){ const now=new Date(); const arr=[]; (state.data.subjects||[]).forEach(s=>{ const p=getTaxProfile(s.id); buildTaxTasks(p,now).forEach(t=>{ if(t.status!=='ok'||t.daysLeft<=15) arr.push(Object.assign({subject:s.values.companyName||'未命名主体'},t)); }); }); return arr.sort((a,b)=>a.daysLeft-b.daysLeft); }
+      function renderTax(){
+        contentHost.innerHTML='';
+        const card=E('div',{class:'opcv-card'});
+        card.appendChild(E('div',{class:'opcv-cardtitle', text:'税务 · 中国报税日历与提醒'}));
+        if(!state.data.subjects.length){ card.appendChild(E('div',{class:'opcv-empty', text:'先在「公司主体」新建主体，再配置税务。'})); contentHost.appendChild(card); return; }
+        let subj=getSubject(state.taxActive); if(!subj){ subj=state.data.subjects[0]; state.taxActive=subj.id; }
+        const chips=E('div',{class:'opcv-chips'});
+        state.data.subjects.forEach(s=>{ const b=E('span',{class:'opcv-chip', text:s.values.companyName||'未命名主体'}); b.style.cursor='pointer'; if(s.id===state.taxActive){ b.style.background='rgba(110,160,255,.22)'; b.style.color='var(--dsw-alias-brand-primary)'; } b.addEventListener('click',()=>{ state.taxActive=s.id; renderTax(); }); chips.appendChild(b); });
+        card.appendChild(chips);
+        const rec=getTaxProfile(subj.id);
+        const pc=E('div',{class:'opcv-card', style:'margin:10px 0;padding:10px 14px;'});
+        pc.appendChild(E('div',{class:'opcv-cardtitle', text:'税务档案 · '+(subj.values.companyName||'未命名主体')}));
+        TAX_FIELDS.forEach(f=>pc.appendChild(fieldRow(f, rec)));
+        card.appendChild(pc);
+        const tasks=buildTaxTasks(rec,new Date());
+        const overdue=tasks.filter(t=>t.status==='overdue').length, soon=tasks.filter(t=>t.status==='soon').length;
+        card.appendChild(E('div',{class:'opcv-hint', text:'近期待办 '+tasks.length+' 项：逾期 '+overdue+' · 7天内到期 '+soon+'。'+ (/零/.test(rec.values.zero||'')?'（本期按零申报，仍需按期提交）':'')}));
+        tasks.forEach(t=>{
+          const row=E('div',{class:'opcv-relrow'});
+          row.appendChild(E('div',{style:'flex:1;min-width:0;'}, E('div',{class:'opcv-relname', text:t.name}), E('div',{class:'opcv-muted', style:'margin:2px 0 0;text-align:left;', text:t.system+' · '+t.cadence+(t.note?' · '+t.note:'')})));
+          const right=E('div',{style:'display:flex;align-items:center;gap:8px;'});
+          right.appendChild(E('span',{class:'pc-src', text:'截止 '+t.due}));
+          const cls=t.status==='overdue'?'off':(t.status==='soon'?'on':'on');
+          right.appendChild(E('span',{class:'badge '+cls, text:(t.status==='overdue'?'逾期':'剩'+t.daysLeft+'天')}));
+          const open=E('button',{class:'opcv-btn opcv-small', text:'打开'}); open.addEventListener('click',()=>{ if(t.link) window.open(t.link,'_blank','noopener'); });
+          right.appendChild(open); row.appendChild(right); card.appendChild(row);
+        });
+        const btns=E('div',{class:'row', style:'margin-top:10px;'});
+        const remind=E('button',{class:'opcv-btn', text:'开启到期提醒'}); remind.addEventListener('click', enableTaxReminders);
+        const guide=E('button',{class:'opcv-btn', text:'办税向导（china-etax-wizard）'}); guide.addEventListener('click', openTaxGuide);
+        const copy=E('button',{class:'opcv-btn', text:'复制本期清单'}); copy.addEventListener('click', async ()=>{ const txt=tasks.map(t=>'- '+t.name+'（'+t.system+'，截止 '+t.due+'）').join('\n'); const body='【'+(subj.values.companyName||'')+'】报税清单\n'+txt; const ok=await copyText(body); toast(ok?'已复制本期清单':'复制失败'); });
+        btns.appendChild(remind); btns.appendChild(guide); btns.appendChild(copy); card.appendChild(btns);
+        card.appendChild(E('div',{class:'disclosure', text:'提醒口径：月报/季报默认每月/季后 15 日（遇周末顺延；节假日以电子税务局「我的待办」为准）。本工具仅做提醒与清单，不代申报、不代提交。'}));
+        contentHost.appendChild(card);
+      }
+      async function enableTaxReminders(){
+        const due=taxDueAll();
+        if(!('Notification' in window)){ toast('当前环境不支持系统通知；已在本页提示：'+(due.length?due[0].name:'暂无临近')); return; }
+        try{ const p=await Notification.requestPermission(); if(p==='granted'){ toast('已开启到期提醒'); if(due.length) due.slice(0,4).forEach(t=>{ try{ new Notification('报税提醒 · '+t.subject,{ body:t.name+' · 截止 '+t.due+'（剩'+t.daysLeft+'天）' }); }catch(e){} }); } else toast('未授权系统通知'); }
+        catch(e){ toast('通知不可用：'+(e&&e.message?e.message:e)); }
+      }
+      function openTaxGuide(){
+        openModal('办税向导 · 中国电子税务局（china-etax-wizard）', (body)=>{
+          body.appendChild(E('div',{class:'opcv-hint', text:'内嵌本机 skill「china-etax-wizard」的心智模型与顺序；逐点击实操请用该 skill 的浏览器模式（登录/刷脸/最终提交由本人操作）。'}));
+          ['① 一个自然人一个账号：法人/财务/办税员/代账都先实名注册；登录页三页签=企业业务/自然人业务/代理业务，登录后右上角可切换身份，不用重登。',
+           '② 两套系统、各自截止日、无先后：企业业务（增值税及附加、企业所得税、印花税/财产行为税、财报）+ 自然人扣缴端（工资薪金个税，每月）。',
+           '③ 每期顺序：先「扣缴端工资个税」(橙线·每月) → 再「企业端各税」(蓝线·每季/年)。',
+           '④ 零申报也要按期提交：无收入/无开票/无工资/无合同/无实缴由本人确认；企业所得税零申报的从业人数、资产总额系统强制>0，须据实填，不能填 0。',
+           '⑤ 一次性：新办开业套餐（一照一码信息确认、财务会计制度备案、存款账户报告、票种/数电票、扣缴登记、税费种认定）只做一次。',
+           '⑥ 多主体跨省：按省份分别登录对应电子税务局；同省用身份切换。',
+           '⑦ 报错/时区/找不到按钮：见 skill 的 troubleshooting；最终【提交申报】、扣款、扫码/刷脸/验证码一律本人操作。'
+          ].forEach(t=>body.appendChild(E('div',{class:'opcv-muted', style:'margin:6px 0;text-align:left;', text:t})));
+          body.appendChild(E('div',{class:'disclosure', text:'完整清单与逐点击：skill references/ new-business-setup.md、zero-filing.md、identity-and-login.md、filing-checklist.md、troubleshooting.md。'}));
+        });
       }
 
       /* ---------- account sets ---------- */
