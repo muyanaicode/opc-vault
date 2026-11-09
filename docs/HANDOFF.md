@@ -52,3 +52,10 @@
 - 预留本地 Agent 接口：agent/vault-bridge.mjs 解密「导出」的加密备份；list 只列名称/环境变量（无明文），run --key 把指定 Key 注入子进程 env（不落日志/不进模型）；主密码走 OPC_VAULT_PASSWORD。
 - 验证：ego 5241 新增测试 Key（sk-••••••1234）并导出；桥 list 正常、run 注入成功(len12/tail1234)、错误口令解密失败。
 - 凭据红线：模型不读取/回显明文 Key；真值只在本地 UI 或本地桥进程内。
+
+## 2026-11-09 · 第12轮（密钥全能力：MCP / 连通测试 / 到期提醒 / 授权子集）
+- 密钥字段扩展：到期日（行内“剩N天/已过期”徽标 + 30天汇总 + 通知提醒）、标签、关联主体、授权 Agent（子集权限）。
+- 新增「测试」按钮：浏览器 fetch 各服务 /v1/models（跨域受限时提示用本地桥）；本地桥 `test` 实测 OpenAI 返回 401（真实发出、不打印 Key）。
+- 新增 agent/vault-mcp.mjs（MCP stdio）：vault_list_keys / vault_run_with_key / vault_test_key；返回元数据不含明文，未授权 Agent 被拒。
+- 验证：bridge list --tag 生产=1；run --agent agentB 被拒(exit4)、agentA 注入成功(12/1234)；MCP tools/list、list_keys、run_with_key 正常。
+- 安全：明文 Key 只在本地解密内存/子进程 env；主密码走 OPC_VAULT_PASSWORD，不进 argv/配置/日志。

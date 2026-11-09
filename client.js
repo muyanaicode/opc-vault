@@ -1025,6 +1025,36 @@ window.__ModuleLoader__.load({
       function guessProvider(env){ for (const it of KEY_PROVIDERS){ if (it[0].test(env)) return { name: it[1], cat: it[2] }; } return { name: '其他', cat: 'other' }; }
       function autoEnv(name){ let e = String(name || '').toUpperCase().replace(/[^A-Z0-9]+/g, '_').replace(/^_+|_+$/g, ''); if (!e) return ''; if (!/_API_KEY$|_KEY$|_TOKEN$|_SECRET$/.test(e)) e += '_API_KEY'; return e; }
       function maskVal(v){ if (!v) return '（未填）'; if (v.length <= 8) return '••••' + String(v).slice(-2); return String(v).slice(0,3) + '••••••' + String(v).slice(-4); }
+      const KEY_TEST_ENDPOINTS = {
+        'OpenAI': { url: 'https://api.openai.com/v1/models', headers: (k) => ({ Authorization: 'Bearer ' + k }) },
+        'Anthropic': { url: 'https://api.anthropic.com/v1/models', headers: (k) => ({ 'x-api-key': k, 'anthropic-version': '2023-06-01' }) },
+        'DeepSeek': { url: 'https://api.deepseek.com/models', headers: (k) => ({ Authorization: 'Bearer ' + k }) },
+        'Google Gemini': { url: (k) => 'https://generativelanguage.googleapis.com/v1beta/models?key=' + encodeURIComponent(k), headers: () => ({}) },
+        'Moonshot 月之暗面': { url: 'https://api.moonshot.cn/v1/models', headers: (k) => ({ Authorization: 'Bearer ' + k }) },
+        '阿里云百炼/通义': { url: 'https://dashscope.aliyuncs.com/compatible-mode/v1/models', headers: (k) => ({ Authorization: 'Bearer ' + k }) },
+        '智谱 GLM': { url: 'https://open.bigmodel.cn/api/paas/v4/models', headers: (k) => ({ Authorization: 'Bearer ' + k }) },
+        'xAI Grok': { url: 'https://api.x.ai/v1/models', headers: (k) => ({ Authorization: 'Bearer ' + k }) },
+        'Mistral': { url: 'https://api.mistral.ai/v1/models', headers: (k) => ({ Authorization: 'Bearer ' + k }) },
+        'OpenRouter': { url: 'https://openrouter.ai/api/v1/models', headers: (k) => ({ Authorization: 'Bearer ' + k }) },
+        'Stripe': { url: 'https://api.stripe.com/v1/balance', headers: (k) => ({ Authorization: 'Bearer ' + k }) },
+        'GitHub': { url: 'https://api.github.com/user', headers: (k) => ({ Authorization: 'token ' + k }) },
+        'Cloudflare': { url: 'https://api.cloudflare.com/client/v4/user/tokens/verify', headers: (k) => ({ Authorization: 'Bearer ' + k }) }
+      };
+      async function testKey(k){
+        const ep = KEY_TEST_ENDPOINTS[k.provider];
+        if (!ep) { toast('暂无「' + (k.provider || k.name) + '」浏览器测试端点（或受跨域限制），可用本地桥 test 命令'); return; }
+        toast('测试中：' + k.provider + ' …');
+        try {
+          const ctrl = new AbortController(); const t = setTimeout(() => ctrl.abort(), 8000);
+          const url = typeof ep.url === 'function' ? ep.url(k.value) : ep.url;
+          const r = await fetch(url, { method: 'GET', headers: ep.headers(k.value), signal: ctrl.signal }); clearTimeout(t);
+          if (r.status === 401 || r.status === 403) toast('❌ ' + k.provider + ' 鉴权失败(' + r.status + ')：Key 可能无效/过期');
+          else if (r.ok) toast('✅ ' + k.provider + ' 连通正常(' + r.status + ')');
+          else toast('⚠️ ' + k.provider + ' 返回 ' + r.status + '（可达，需核对权限）');
+        } catch (e) { toast('测试失败：' + (e && e.message ? e.message : e) + '（多为浏览器跨域，建议用本地桥 test）'); }
+      }
+      function keyDueList(){ const now = new Date(); now.setHours(0,0,0,0); const out = []; (state.data.apiKeys || []).forEach((k) => { if (!k.expiresAt) return; const d = new Date(k.expiresAt + 'T00:00:00'); if (isNaN(d)) return; const dl = Math.round((d - now) / 86400000); if (dl <= 30) out.push({ k: k, dl: dl }); }); return out.sort((a, b) => a.dl - b.dl); }
+      async function enableKeyReminders(){ const due = keyDueList(); if (!('Notification' in window)) { toast('当前环境不支持系统通知；' + (due.length ? ('有 ' + due.length + ' 个 Key 临期/过期') : '暂无临期')); return; } try { const p = await Notification.requestPermission(); if (p === 'granted') { toast('已开启密钥到期提醒'); if (due.length) due.slice(0,4).forEach((x) => { try { new Notification('API Key 到期提醒', { body: x.k.name + '（' + (x.k.envName || '') + '）' + (x.dl < 0 ? ('已过期 ' + (-x.dl) + ' 天') : ('剩 ' + x.dl + ' 天')) }); } catch (e) {} }); } else toast('未授权通知'); } catch (e) { toast('通知不可用'); } }
       function openKeyModal(existing){
         openModal(existing ? '编辑密钥' : '新增密钥', (body, close) => {
           const nameI = E('input', { class: 'opcv-input', props: { value: existing ? existing.name : '' } });
@@ -1033,16 +1063,21 @@ window.__ModuleLoader__.load({
           const envI = E('input', { class: 'opcv-input', props: { value: existing ? existing.envName : '' }, attrs: { placeholder: '如 OPENAI_API_KEY' } });
           const valI = E('input', { class: 'opcv-input', props: { type: 'password', value: existing ? existing.value : '' }, attrs: { placeholder: '粘贴 Key（仅本地加密保存）', autocomplete: 'off' } });
           const noteI = E('input', { class: 'opcv-input', props: { value: existing ? existing.note : '' } });
+          const expI = E('input', { class: 'opcv-input', props: { type: 'date', value: existing && existing.expiresAt ? existing.expiresAt : '' } });
+          const tagI = E('input', { class: 'opcv-input', props: { value: existing ? (existing.tags || '') : '' }, attrs: { placeholder: '逗号分隔，如 生产,项目A' } });
+          const subjS = E('select', { class: 'opcv-input' }); { const o0 = document.createElement('option'); o0.value = ''; o0.textContent = '（不关联主体）'; subjS.appendChild(o0); (state.data.subjects || []).forEach((s) => { const o = document.createElement('option'); o.value = s.id; o.textContent = s.values.companyName || '未命名主体'; subjS.appendChild(o); }); subjS.value = existing && existing.subjectId ? existing.subjectId : ''; }
+          const allowI = E('input', { class: 'opcv-input', props: { value: existing ? (existing.allowAgents || '') : '' }, attrs: { placeholder: '逗号分隔，如 agentA,agentB；留空=所有 Agent 可用' } });
           const lab = (t, el) => { const w = E('div', { style: 'margin-bottom:10px;' }); w.appendChild(E('div', { class: 'opcv-muted', style: 'text-align:left;margin-bottom:4px;', text: t })); w.appendChild(el); return w; };
           body.appendChild(lab('名称', nameI)); body.appendChild(lab('分类', catS)); body.appendChild(lab('服务商', provI));
           body.appendChild(lab('环境变量名（本地 Agent 调用用）', envI)); body.appendChild(lab('Key', valI)); body.appendChild(lab('备注', noteI));
+          body.appendChild(lab('到期日（可选，用于轮换提醒）', expI)); body.appendChild(lab('标签（可选）', tagI)); body.appendChild(lab('关联主体（可选）', subjS)); body.appendChild(lab('授权 Agent（可选，子集权限）', allowI));
           const bar = E('div', { class: 'row', style: 'margin-top:6px;' });
           const save = E('button', { class: 'opcv-btn opcv-primary', text: '保存' });
           save.addEventListener('click', async () => {
             if (!nameI.value.trim()) { toast('请填名称'); return; }
             let env = envI.value.trim() || autoEnv(provI.value || nameI.value); envI.value = env;
             const g = guessProvider(env);
-            const obj = { id: existing ? existing.id : uid('k'), name: nameI.value.trim(), category: catS.value, provider: provI.value.trim() || g.name, envName: env, value: valI.value, note: noteI.value.trim(), createdAt: existing ? existing.createdAt : Date.now() };
+            const obj = { id: existing ? existing.id : uid('k'), name: nameI.value.trim(), category: catS.value, provider: provI.value.trim() || g.name, envName: env, value: valI.value, note: noteI.value.trim(), expiresAt: expI.value || '', tags: tagI.value.trim(), subjectId: subjS.value || '', allowAgents: allowI.value.trim(), createdAt: existing ? existing.createdAt : Date.now() };
             state.data.apiKeys = state.data.apiKeys || [];
             if (existing) { const i = state.data.apiKeys.findIndex((k) => k.id === existing.id); if (i >= 0) state.data.apiKeys[i] = obj; } else state.data.apiKeys.push(obj);
             await saveNow(); close(); renderApiKeys(); toast('已保存密钥');
@@ -1080,7 +1115,9 @@ window.__ModuleLoader__.load({
         const addB = E('button', { class: 'opcv-btn opcv-primary', text: '新增密钥' }); addB.addEventListener('click', () => openKeyModal(null));
         const impB = E('button', { class: 'opcv-btn', text: '导入 .env' }); impB.addEventListener('click', importEnv);
         const envB = E('button', { class: 'opcv-btn', text: '复制为 .env' }); envB.addEventListener('click', async () => { const lines = (state.data.apiKeys || []).filter((k) => k.envName && k.value).map((k) => k.envName + '=' + k.value).join('\n'); if (!lines) { toast('还没有可导出的密钥'); return; } const ok = await copyText(lines); toast(ok ? '已复制 ' + (state.data.apiKeys.filter(k=>k.envName&&k.value).length) + ' 行到剪贴板' : '复制失败'); });
-        tb.appendChild(searchI); tb.appendChild(addB); tb.appendChild(impB); tb.appendChild(envB); card.appendChild(tb);
+        const remindB = E('button', { class: 'opcv-btn', text: '密钥到期提醒' }); remindB.addEventListener('click', enableKeyReminders);
+        tb.appendChild(searchI); tb.appendChild(addB); tb.appendChild(impB); tb.appendChild(envB); tb.appendChild(remindB); card.appendChild(tb);
+        const dueN = keyDueList().length; if (dueN) card.appendChild(E('div', { class: 'opcv-hint', text: '⚠️ ' + dueN + ' 个 Key 将在 30 天内到期或已过期，建议轮换。' }));
         const searchable = [];
         const CATS = [['llm', '大模型'], ['web', '网站 / 服务'], ['other', '其他']];
         let total = 0;
@@ -1092,15 +1129,23 @@ window.__ModuleLoader__.load({
           arr.forEach((k) => {
             const row = E('div', { class: 'opcv-relrow' });
             const left = E('div', { style: 'flex:1;min-width:0;' });
-            left.appendChild(E('div', { class: 'opcv-relname', text: k.name }));
+            const nameLine = E('div', { class: 'opcv-relname', text: k.name });
+            if (k.expiresAt) { const d = new Date(k.expiresAt + 'T00:00:00'); if (!isNaN(d)) { const now = new Date(); now.setHours(0,0,0,0); const dl = Math.round((d - now) / 86400000); nameLine.appendChild(E('span', { class: 'badge ' + (dl < 0 ? 'off' : 'on'), style: 'margin-left:8px;', text: (dl < 0 ? '已过期' : ('剩' + dl + '天')) })); } }
+            left.appendChild(nameLine);
             left.appendChild(E('div', { class: 'opcv-muted', style: 'margin:2px 0 0;text-align:left;', text: (k.provider || '') + ' · ' + (k.envName || '') + (k.note ? ' · ' + k.note : '') }));
+            const metaLine = E('div', { style: 'display:flex;flex-wrap:wrap;gap:6px;margin-top:4px;' });
+            String(k.tags || '').split(/[,，\s]+/).filter(Boolean).forEach((t) => metaLine.appendChild(E('span', { class: 'opcv-chip', style: 'font-size:11px;padding:1px 7px;', text: '#' + t })));
+            if (k.subjectId) { const sj = getSubject(k.subjectId); if (sj) metaLine.appendChild(E('span', { class: 'opcv-chip', style: 'font-size:11px;padding:1px 7px;', text: sj.values.companyName || '主体' })); }
+            if (k.allowAgents) metaLine.appendChild(E('span', { class: 'opcv-chip', style: 'font-size:11px;padding:1px 7px;', text: 'Agent: ' + k.allowAgents }));
+            if (metaLine.childNodes.length) left.appendChild(metaLine);
             row.appendChild(left);
             const right = E('div', { style: 'display:flex;align-items:center;gap:8px;' });
             right.appendChild(E('span', { class: 'pc-src', text: maskVal(k.value) }));
             const cp = E('button', { class: 'opcv-btn opcv-small', text: '复制' }); cp.addEventListener('click', async () => { const ok = await copyText(k.value || ''); toast(ok ? '已复制 ' + (k.envName || k.name) : '复制失败'); });
             const ed = E('button', { class: 'opcv-btn opcv-small', text: '编辑' }); ed.addEventListener('click', () => openKeyModal(k));
             const del = E('button', { class: 'opcv-btn opcv-small', text: '删除' }); del.addEventListener('click', async () => { if (!window.confirm('删除密钥「' + k.name + '」？')) return; state.data.apiKeys = state.data.apiKeys.filter((x) => x.id !== k.id); await saveNow(); renderApiKeys(); toast('已删除'); });
-            right.appendChild(cp); right.appendChild(ed); right.appendChild(del); row.appendChild(right); card.appendChild(row);
+            const tst = E('button', { class: 'opcv-btn opcv-small', text: '测试' }); tst.addEventListener('click', () => testKey(k));
+            right.appendChild(tst); right.appendChild(cp); right.appendChild(ed); right.appendChild(del); row.appendChild(right); card.appendChild(row);
             searchable.push({ el: row, t: (k.name + ' ' + (k.provider || '') + ' ' + (k.envName || '') + ' ' + (k.note || '')).toLowerCase() });
           });
         });
