@@ -780,7 +780,7 @@ window.__ModuleLoader__.load({
             const meta = { app: 'opc-vault', v: 2, kdf: 'pbkdf2-sha256-600000', saltB64: bufToB64(salt), wrappedDEK: wrapped, createdAt: Date.now() };
             if (cb.checked && passkeyEligible()) { try { const pk = await registerPasskey(dek); if (pk.ok) meta.passkey = pk.record; else if (pk.reason === 'PRF_NOT_SUPPORTED') toast('此设备暂不支持 Passkey PRF，已跳过'); } catch (e) { toast('Passkey 未完成：' + (e && e.message ? e.message : e)); } }
             state.dek = dek; state.meta = meta;
-            state.data = { v: 2, subjects: [], accountSets: [], customFields: [], taxProfiles: {}, updatedAt: Date.now() };
+            state.data = { v: 2, subjects: [], accountSets: [], customFields: [], taxProfiles: {}, apiKeys: [], updatedAt: Date.now() };
             await idbSet('meta', meta); await saveNow();
             state.mode = 'app'; state.view = 'overview'; lastActivity = Date.now();
             render(); toast('账套库已创建，数据仅保存在本机');
@@ -837,13 +837,14 @@ window.__ModuleLoader__.load({
       async function finishUnlock(dek) {
         state.dek = dek;
         const payload = await idbGet('vault');
-        let data = payload ? await decryptObject(dek, payload) : { v: 2, subjects: [], accountSets: [], customFields: [], taxProfiles: {}, updatedAt: Date.now() };
+        let data = payload ? await decryptObject(dek, payload) : { v: 2, subjects: [], accountSets: [], customFields: [], taxProfiles: {}, apiKeys: [], updatedAt: Date.now() };
         data = migrate(data);
         if (!data.subjects) data.subjects = [];
         if (!data.accountSets) data.accountSets = [];
         if (!data.customFields) data.customFields = [];
         state.data = data;
         if (!state.data.taxProfiles) state.data.taxProfiles = {};
+        if (!Array.isArray(state.data.apiKeys)) state.data.apiKeys = [];
         state.mode = 'app'; state.view = 'overview'; lastActivity = Date.now();
         render();
       }
@@ -894,7 +895,7 @@ window.__ModuleLoader__.load({
 
         // tabs
         tabsHost = E('div', { class: 'opcv-tabs' });
-        [['overview', '概览'], ['subjects', '公司主体'], ['accounts', '账套'], ['relations', '关系'], ['tax', '税务']].forEach(([v, label]) => {
+        [['overview', '概览'], ['subjects', '公司主体'], ['accounts', '账套'], ['relations', '关系'], ['tax', '税务'], ['keys', '密钥']].forEach(([v, label]) => {
           const t = E('button', { class: 'opcv-tab' + (state.view === v ? ' active' : ''), text: label });
           t.addEventListener('click', () => { state.view = v; renderApp(); });
           tabsHost.appendChild(t);
@@ -909,6 +910,7 @@ window.__ModuleLoader__.load({
         else if (state.view === 'subjects') renderSubjects();
         else if (state.view === 'accounts') renderAccounts();
         else if (state.view === 'tax') renderTax();
+        else if (state.view === 'keys') renderApiKeys();
         else renderRelations();
       }
 
@@ -1002,6 +1004,123 @@ window.__ModuleLoader__.load({
         }
         split.appendChild(detail);
         contentHost.appendChild(split);
+      }
+
+      /* ---------- API 密钥（分类 / 一键复制 / 本地 Agent） ---------- */
+      const KEY_PROVIDERS = [
+        [/(OPENAI|OPEN_AI)/i, 'OpenAI', 'llm'], [/(ANTHROPIC|CLAUDE)/i, 'Anthropic', 'llm'],
+        [/(DEEPSEEK)/i, 'DeepSeek', 'llm'], [/(GEMINI|GOOGLE_GENAI|GOOGLE_AI)/i, 'Google Gemini', 'llm'],
+        [/(MOONSHOT|KIMI)/i, 'Moonshot 月之暗面', 'llm'], [/(DASHSCOPE|QWEN|BAILIAN)/i, '阿里云百炼/通义', 'llm'],
+        [/(ZHIPU|GLM|BIGMODEL)/i, '智谱 GLM', 'llm'], [/(XAI|GROK)/i, 'xAI Grok', 'llm'],
+        [/(MISTRAL)/i, 'Mistral', 'llm'], [/(COHERE)/i, 'Cohere', 'llm'], [/(OPENROUTER)/i, 'OpenRouter', 'llm'],
+        [/(REPLICATE)/i, 'Replicate', 'llm'], [/(HUGGINGFACE|HF_TOKEN)/i, 'Hugging Face', 'llm'],
+        [/(MINIMAX)/i, 'MiniMax', 'llm'], [/(BAIDU|QIANFAN|ERNIE)/i, '百度千帆', 'llm'],
+        [/(VOLC|ARK|DOUBAO)/i, '火山方舟/豆包', 'llm'],
+        [/(STRIPE)/i, 'Stripe', 'web'], [/(GITHUB|GH_TOKEN)/i, 'GitHub', 'web'], [/(CLOUDFLARE|CF_)/i, 'Cloudflare', 'web'],
+        [/(AWS_|AMAZON)/i, 'AWS', 'web'], [/(SUPABASE)/i, 'Supabase', 'web'], [/(POSTHOG)/i, 'PostHog', 'web'],
+        [/(VERCEL)/i, 'Vercel', 'web'], [/(RESEND|SENDGRID|MAILGUN)/i, '邮件服务', 'web'], [/(TWILIO)/i, 'Twilio', 'web'],
+        [/(NOTION)/i, 'Notion', 'web'], [/(FEISHU|LARK)/i, '飞书/Lark', 'web'], [/(WECHAT|WX_)/i, '微信', 'web'],
+        [/(ALIPAY)/i, '支付宝', 'web'], [/(TINYFISH)/i, 'TinyFish', 'web'], [/(GOOGLE)/i, 'Google', 'web']
+      ];
+      function guessProvider(env){ for (const it of KEY_PROVIDERS){ if (it[0].test(env)) return { name: it[1], cat: it[2] }; } return { name: '其他', cat: 'other' }; }
+      function autoEnv(name){ let e = String(name || '').toUpperCase().replace(/[^A-Z0-9]+/g, '_').replace(/^_+|_+$/g, ''); if (!e) return ''; if (!/_API_KEY$|_KEY$|_TOKEN$|_SECRET$/.test(e)) e += '_API_KEY'; return e; }
+      function maskVal(v){ if (!v) return '（未填）'; if (v.length <= 8) return '••••' + String(v).slice(-2); return String(v).slice(0,3) + '••••••' + String(v).slice(-4); }
+      function openKeyModal(existing){
+        openModal(existing ? '编辑密钥' : '新增密钥', (body, close) => {
+          const nameI = E('input', { class: 'opcv-input', props: { value: existing ? existing.name : '' } });
+          const catS = E('select', { class: 'opcv-input' }); [['llm','大模型'],['web','网站 / 服务'],['other','其他']].forEach(([v,l]) => { const o = document.createElement('option'); o.value = v; o.textContent = l; catS.appendChild(o); }); catS.value = existing ? existing.category : 'llm';
+          const provI = E('input', { class: 'opcv-input', props: { value: existing ? existing.provider : '' } });
+          const envI = E('input', { class: 'opcv-input', props: { value: existing ? existing.envName : '' }, attrs: { placeholder: '如 OPENAI_API_KEY' } });
+          const valI = E('input', { class: 'opcv-input', props: { type: 'password', value: existing ? existing.value : '' }, attrs: { placeholder: '粘贴 Key（仅本地加密保存）', autocomplete: 'off' } });
+          const noteI = E('input', { class: 'opcv-input', props: { value: existing ? existing.note : '' } });
+          const lab = (t, el) => { const w = E('div', { style: 'margin-bottom:10px;' }); w.appendChild(E('div', { class: 'opcv-muted', style: 'text-align:left;margin-bottom:4px;', text: t })); w.appendChild(el); return w; };
+          body.appendChild(lab('名称', nameI)); body.appendChild(lab('分类', catS)); body.appendChild(lab('服务商', provI));
+          body.appendChild(lab('环境变量名（本地 Agent 调用用）', envI)); body.appendChild(lab('Key', valI)); body.appendChild(lab('备注', noteI));
+          const bar = E('div', { class: 'row', style: 'margin-top:6px;' });
+          const save = E('button', { class: 'opcv-btn opcv-primary', text: '保存' });
+          save.addEventListener('click', async () => {
+            if (!nameI.value.trim()) { toast('请填名称'); return; }
+            let env = envI.value.trim() || autoEnv(provI.value || nameI.value); envI.value = env;
+            const g = guessProvider(env);
+            const obj = { id: existing ? existing.id : uid('k'), name: nameI.value.trim(), category: catS.value, provider: provI.value.trim() || g.name, envName: env, value: valI.value, note: noteI.value.trim(), createdAt: existing ? existing.createdAt : Date.now() };
+            state.data.apiKeys = state.data.apiKeys || [];
+            if (existing) { const i = state.data.apiKeys.findIndex((k) => k.id === existing.id); if (i >= 0) state.data.apiKeys[i] = obj; } else state.data.apiKeys.push(obj);
+            await saveNow(); close(); renderApiKeys(); toast('已保存密钥');
+          });
+          const cancel = E('button', { class: 'opcv-btn', text: '取消' }); cancel.addEventListener('click', close);
+          bar.appendChild(save); bar.appendChild(cancel); body.appendChild(bar);
+        });
+      }
+      function importEnv(){
+        const inp = E('input', { props: { type: 'file', accept: '.env,text/plain' }, style: 'display:none;' });
+        inp.addEventListener('change', async () => {
+          const f = inp.files && inp.files[0]; if (!f) return;
+          try {
+            const txt = await f.text(); let n = 0;
+            txt.split(/\r?\n/).forEach((line) => {
+              line = line.trim(); if (!line || line.startsWith('#')) return;
+              const m = line.match(/^(?:export\s+)?([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(.*)$/); if (!m) return;
+              let val = m[2].trim().replace(/^['"]|['"]$/g, ''); if (!val) return;
+              const env = m[1]; if ((state.data.apiKeys || []).some((k) => k.envName === env)) return;
+              const g = guessProvider(env);
+              state.data.apiKeys.push({ id: uid('k'), name: env.replace(/_/g, ' '), category: g.cat, provider: g.name, envName: env, value: val, note: '来自 .env', createdAt: Date.now() }); n++;
+            });
+            await saveNow(); renderApiKeys(); toast('已导入 ' + n + ' 个密钥（本地解析，未联网）');
+          } catch (e) { toast('导入失败：' + (e && e.message ? e.message : e)); }
+        });
+        root.appendChild(inp); inp.click(); setTimeout(() => inp.remove(), 1000);
+      }
+      function renderApiKeys(){
+        contentHost.innerHTML = '';
+        const card = E('div', { class: 'opcv-card' });
+        card.appendChild(E('div', { class: 'opcv-cardtitle', text: 'API 密钥 · 分类 / 一键复制 / 本地 Agent 调用' }));
+        card.appendChild(E('div', { class: 'opcv-hint', text: '密钥整库加密存储、只在本机；一键复制为明文，别粘到公开处。网页/网站与大模型 Key 分开归类。' }));
+        const tb = E('div', { class: 'row', style: 'margin-top:4px;' });
+        const searchI = E('input', { class: 'opcv-input', props: { placeholder: '搜索名称/服务商/环境变量' }, style: 'max-width:260px;' });
+        const addB = E('button', { class: 'opcv-btn opcv-primary', text: '新增密钥' }); addB.addEventListener('click', () => openKeyModal(null));
+        const impB = E('button', { class: 'opcv-btn', text: '导入 .env' }); impB.addEventListener('click', importEnv);
+        const envB = E('button', { class: 'opcv-btn', text: '复制为 .env' }); envB.addEventListener('click', async () => { const lines = (state.data.apiKeys || []).filter((k) => k.envName && k.value).map((k) => k.envName + '=' + k.value).join('\n'); if (!lines) { toast('还没有可导出的密钥'); return; } const ok = await copyText(lines); toast(ok ? '已复制 ' + (state.data.apiKeys.filter(k=>k.envName&&k.value).length) + ' 行到剪贴板' : '复制失败'); });
+        tb.appendChild(searchI); tb.appendChild(addB); tb.appendChild(impB); tb.appendChild(envB); card.appendChild(tb);
+        const searchable = [];
+        const CATS = [['llm', '大模型'], ['web', '网站 / 服务'], ['other', '其他']];
+        let total = 0;
+        CATS.forEach(([ck, cl]) => {
+          const arr = (state.data.apiKeys || []).filter((k) => k.category === ck); total += arr.length;
+          if (!arr.length) return;
+          card.appendChild(E('div', { class: 'opcv-cardtitle', style: 'margin-top:14px;', text: cl + '（' + arr.length + '）' }));
+          arr.sort((a, b) => String(a.provider || '').localeCompare(String(b.provider || '')));
+          arr.forEach((k) => {
+            const row = E('div', { class: 'opcv-relrow' });
+            const left = E('div', { style: 'flex:1;min-width:0;' });
+            left.appendChild(E('div', { class: 'opcv-relname', text: k.name }));
+            left.appendChild(E('div', { class: 'opcv-muted', style: 'margin:2px 0 0;text-align:left;', text: (k.provider || '') + ' · ' + (k.envName || '') + (k.note ? ' · ' + k.note : '') }));
+            row.appendChild(left);
+            const right = E('div', { style: 'display:flex;align-items:center;gap:8px;' });
+            right.appendChild(E('span', { class: 'pc-src', text: maskVal(k.value) }));
+            const cp = E('button', { class: 'opcv-btn opcv-small', text: '复制' }); cp.addEventListener('click', async () => { const ok = await copyText(k.value || ''); toast(ok ? '已复制 ' + (k.envName || k.name) : '复制失败'); });
+            const ed = E('button', { class: 'opcv-btn opcv-small', text: '编辑' }); ed.addEventListener('click', () => openKeyModal(k));
+            const del = E('button', { class: 'opcv-btn opcv-small', text: '删除' }); del.addEventListener('click', async () => { if (!window.confirm('删除密钥「' + k.name + '」？')) return; state.data.apiKeys = state.data.apiKeys.filter((x) => x.id !== k.id); await saveNow(); renderApiKeys(); toast('已删除'); });
+            right.appendChild(cp); right.appendChild(ed); right.appendChild(del); row.appendChild(right); card.appendChild(row);
+            searchable.push({ el: row, t: (k.name + ' ' + (k.provider || '') + ' ' + (k.envName || '') + ' ' + (k.note || '')).toLowerCase() });
+          });
+        });
+        if (!total) card.appendChild(E('div', { class: 'opcv-empty', text: '还没有密钥。点「新增密钥」或「导入 .env」开始。' }));
+        searchI.addEventListener('input', () => { const q = searchI.value.trim().toLowerCase(); searchable.forEach((x) => { x.el.style.display = (!q || x.t.indexOf(q) >= 0) ? '' : 'none'; }); });
+        // Agent 接口
+        const ac = E('div', { class: 'opcv-card', style: 'margin-top:16px;padding:12px 14px;' });
+        ac.appendChild(E('div', { class: 'opcv-cardtitle', text: '本地 Agent 调用 · 预留接口（密钥不进日志/不给模型）' }));
+        const firstEnv = ((state.data.apiKeys || []).find((k) => k.envName && k.value) || {}).envName || 'OPENAI_API_KEY';
+        const cmdList = "OPC_VAULT_PASSWORD='<主密码>' node agent/vault-bridge.mjs list --file opc-vault-YYYYMMDD.vault.json";
+        const cmdRun = "OPC_VAULT_PASSWORD='<主密码>' node agent/vault-bridge.mjs run --file opc-vault-YYYYMMDD.vault.json --key " + firstEnv + " -- <你的命令>";
+        [['① 先「导出」加密备份', '点顶部「导出」得到 opc-vault-*.vault.json（整库加密，需主密码）。'],
+         ['② 列出可用密钥（只显示名称/环境变量，不显示值）', cmdList],
+         ['③ 把某个 Key 注入到本地命令（密钥只在子进程 env 中，不回显）', cmdRun]].forEach(([t, c]) => {
+          ac.appendChild(E('div', { class: 'opcv-muted', style: 'text-align:left;margin:8px 0 3px;', text: t }));
+          if (c) { const line = E('div', { class: 'opcv-mono', style: 'display:flex;align-items:center;gap:8px;background:var(--dsw-alias-bg-layer-2);border:1px solid var(--dsw-alias-border-l1);border-radius:8px;padding:6px 8px;' }); line.appendChild(E('span', { style: 'flex:1;min-width:0;word-break:break-all;font-size:12px;', text: c })); const b = E('button', { class: 'opcv-btn opcv-small', text: '复制' }); b.addEventListener('click', async () => { const ok = await copyText(c); toast(ok ? '已复制命令' : '复制失败'); }); line.appendChild(b); ac.appendChild(line); }
+        });
+        ac.appendChild(E('div', { class: 'disclosure', text: '安全：模型/日志不接触明文 Key；本地桥用主密码在内存解密，仅把指定 Key 注入子进程环境变量。桥文件：agent/vault-bridge.mjs。' }));
+        card.appendChild(ac);
+        contentHost.appendChild(card);
       }
 
       /* ---------- 税务（中国报税） ---------- */
