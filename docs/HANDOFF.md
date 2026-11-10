@@ -93,3 +93,10 @@
 - SW v5→v6。
 - 验证：ego 5246 Beta/页脚/协议弹窗/税务规则版本正常；legal.html 200。
 - 上线：push origin main。
+
+## 2026-11-10 · 第17轮（定价页 + Waitlist，上线）
+- client.js 新增 PRICING/WAITLIST 配置（唯一事实源）与 openPricing/openWaitlist；页脚「定价与托管」入口。
+- 三档：开源自托管(免费) / 托管 Managed(内测预约) / 团队企业(定制)；Waitlist 表单（邮箱必填+同意隐私）→ endpoint(POST) / contactEmail(mailto) / 缺省 GitHub Issue 回退 + 本地记录。
+- 新增独立营销页 pricing.html（含同款预约表单）。
+- 验证：ego 5247 定价弹窗三档、预约表单、无效邮箱提示、提交写入 localStorage(1 条)；pricing.html 200。
+- 上线：push origin main。

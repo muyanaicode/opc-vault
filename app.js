@@ -35,6 +35,14 @@
       ] }
     };
 
+    // 定价与托管预约（唯一事实源：价格/文案在此维护；Waitlist 收集渠道：endpoint 或 contactEmail，缺省回退 GitHub Issue）
+    const PRICING = { currency: '¥', plans: [
+      { id: 'oss', name: '开源版 · 自托管', price: '0', unit: '永久免费', badge: '推荐', desc: '本地优先、端到端加密，能力不阉割', action: 'open', bullets: ['公司主体 ⟷ 账套（多对多）', '本地 AES-256 加密、零服务器', '导入/导出加密备份、Passkey', '税务日历提醒、API Key 管理', 'MIT 开源，自托管永久免费'] },
+      { id: 'managed', name: '托管版 · Managed', price: '待定', unit: '订阅制 · 内测预约', badge: '内测', desc: '免运维、跨设备同步、自动备份', action: 'waitlist', bullets: ['云端加密同步（多端）', '自动备份与恢复', '团队协作与权限', '优先支持'] },
+      { id: 'team', name: '团队 / 企业', price: '定制', unit: '按需报价', badge: '', desc: '私有化部署与定制', action: 'waitlist', bullets: ['私有化 / 专属实例', 'SSO 与审计', '合同与发票'] }
+    ] };
+    const WAITLIST = { endpoint: '', contactEmail: '', githubNewIssue: 'https://github.com/muyanaicode/opc-vault/issues/new' };
+    const GITHUB_URL = 'https://github.com/muyanaicode/opc-vault';
     // 税务档案字段（中国报税场景）
     const TAX_FIELDS = [
       { key: 'province', label: '省份/地区', placeholder: '如 北京' },
@@ -968,6 +976,7 @@
         app.appendChild(contentHost);
         const foot = E('div', { class: 'opcv-footer' });
         [['terms','用户协议'],['privacy','隐私政策'],['disclaimer','免责声明']].forEach(([k,label]) => { const b = E('button', { class: 'opcv-footlink', text: label }); b.addEventListener('click', () => openLegal(k)); foot.appendChild(b); });
+        const priceBtn = E('button', { class: 'opcv-footlink', text: '定价与托管' }); priceBtn.addEventListener('click', openPricing); foot.appendChild(priceBtn);
         foot.appendChild(E('span', { text: 'v0.1.0 · Beta · 本地加密 · 无服务器' }));
         app.appendChild(foot);
         shell.appendChild(app);
@@ -1627,6 +1636,63 @@
             body.appendChild(E('div', { class: 'opcv-muted', style: 'text-align:left;margin:4px 0;line-height:1.7;', text: t }));
           });
           body.appendChild(E('div', { class: 'disclosure', text: '生效日期：' + LEGAL_VERSION + ' · 沐言 AI · 疑问请通过 GitHub Issues 反馈。' }));
+        });
+      }
+
+      function openPricing() {
+        openModal('定价与托管（Beta）', (body, close) => {
+          body.appendChild(E('div', { class: 'opcv-hint', text: '原则：开源自托管完全免费；托管版（免运维/多端同步）为订阅制，当前内测预约。价格为唯一事实源配置，最终以后续公告为准。' }));
+          const wrap = E('div', { style: 'display:flex;gap:12px;flex-wrap:wrap;margin-top:10px;' });
+          PRICING.plans.forEach((pl) => {
+            const card = E('div', { style: 'flex:1 1 200px;min-width:200px;background:var(--dsw-alias-bg-layer-2);border:1px solid var(--dsw-alias-border-l1);border-radius:12px;padding:14px;display:flex;flex-direction:column;gap:8px;' });
+            const h = E('div', { style: 'display:flex;align-items:center;gap:8px;' }, E('div', { style: 'font-weight:700;font-size:14px;', text: pl.name }));
+            if (pl.badge) h.appendChild(E('span', { class: 'opcv-beta', text: pl.badge })); card.appendChild(h);
+            card.appendChild(E('div', { style: 'font-size:24px;font-weight:800;letter-spacing:-.5px;' }, (pl.price === '0' ? PRICING.currency + '0' : pl.price), E('span', { style: 'font-size:11px;font-weight:500;color:var(--dsw-alias-label-secondary);margin-left:6px;', text: pl.unit })));
+            card.appendChild(E('div', { class: 'opcv-muted', style: 'text-align:left;', text: pl.desc }));
+            const ul = E('div'); pl.bullets.forEach((b) => ul.appendChild(E('div', { class: 'opcv-muted', style: 'text-align:left;margin:2px 0;', text: '· ' + b }))); card.appendChild(ul);
+            const btn = E('button', { class: 'opcv-btn' + (pl.action === 'open' ? ' opcv-primary' : ''), style: 'margin-top:auto;justify-content:center;', text: pl.action === 'open' ? '打开应用' : (pl.id === 'managed' ? '预约内测' : '联系我们') });
+            btn.addEventListener('click', () => { if (pl.action === 'open') { close(); } else { close(); openWaitlist(pl); } });
+            card.appendChild(btn);
+            if (pl.action === 'open') { const gh = E('button', { class: 'opcv-footlink', style: 'font-size:11px;', text: 'GitHub 仓库' }); gh.addEventListener('click', () => window.open(GITHUB_URL, '_blank', 'noopener')); card.appendChild(gh); }
+            wrap.appendChild(card);
+          });
+          body.appendChild(wrap);
+          body.appendChild(E('div', { class: 'disclosure', text: '开源版 MIT 永久免费；托管/团队版为付费项，具体价格与 SLA 以正式公告与合同为准。' }));
+        });
+      }
+
+      function openWaitlist(plan) {
+        openModal('预约 / 联系 · ' + plan.name, (body, close) => {
+          body.appendChild(E('div', { class: 'opcv-hint', text: '留下联系方式，我们会在托管版内测开放时联系你。你的信息仅用于本次预约。' }));
+          const emailI = E('input', { class: 'opcv-input', props: { type: 'email', placeholder: '邮箱（必填）' } });
+          const orgI = E('input', { class: 'opcv-input', props: { placeholder: '公司/主体或团队规模（选填）' } });
+          const noteI = E('textarea', { class: 'opcv-input opcv-textarea', props: { placeholder: '需求说明（选填）' } });
+          const consent = E('input', { props: { type: 'checkbox' } });
+          const consentWrap = E('label', { class: 'opcv-muted', style: 'display:flex;align-items:flex-start;gap:8px;text-align:left;margin:10px 0;' }, consent, E('span', { text: '我已阅读并同意 ' }));
+          const plink = E('button', { class: 'opcv-footlink', text: '《隐私政策》' }); plink.addEventListener('click', () => openLegal('privacy')); consentWrap.children[1].appendChild(plink);
+          const status = E('div', { class: 'opcv-hint', style: 'min-height:16px;' });
+          [['邮箱', emailI], ['主体/规模', orgI], ['需求', noteI]].forEach(([t, el]) => { body.appendChild(E('div', { class: 'opcv-muted', style: 'text-align:left;margin:6px 0 3px;', text: t })); body.appendChild(el); });
+          body.appendChild(consentWrap); body.appendChild(status);
+          const bar = E('div', { class: 'row', style: 'justify-content:flex-end;' });
+          const submit = E('button', { class: 'opcv-btn opcv-primary', text: '提交预约' });
+          submit.addEventListener('click', async () => {
+            const email = emailI.value.trim(), org = orgI.value.trim(), note = noteI.value.trim();
+            if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) { status.textContent = '请输入有效邮箱'; return; }
+            if (!consent.checked) { status.textContent = '请先勾选同意隐私政策'; return; }
+            submit.disabled = true; const old = submit.textContent; submit.textContent = '提交中…';
+            try {
+              const rec = { plan: plan.id, planName: plan.name, email: email, org: org, note: note, ts: new Date().toISOString() };
+              try { const arr = JSON.parse(localStorage.getItem('opcv_waitlist_v1') || '[]'); arr.push(rec); localStorage.setItem('opcv_waitlist_v1', JSON.stringify(arr)); } catch (e) {}
+              let via = 'local';
+              if (WAITLIST.endpoint) { const r = await fetch(WAITLIST.endpoint, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(rec) }); if (!r.ok) throw new Error('HTTP ' + r.status); via = 'server'; }
+              else if (WAITLIST.contactEmail) { const subj = encodeURIComponent('【OPC Vault 托管预约】' + plan.name); const bd = encodeURIComponent('计划：' + plan.name + '\n邮箱：' + email + '\n主体/规模：' + org + '\n备注：' + note + '\n时间：' + rec.ts); window.location.href = 'mailto:' + WAITLIST.contactEmail + '?subject=' + subj + '&body=' + bd; via = 'email'; }
+              else { const t = encodeURIComponent('【托管预约】' + plan.name + ' · ' + email); const bd = encodeURIComponent('计划：' + plan.name + '\n邮箱：' + email + '\n主体/规模：' + org + '\n备注：' + note + '\n（GitHub Issue 公开提交；可在配置中设置 contactEmail/endpoint 改为私密收集）'); try { window.open(WAITLIST.githubNewIssue + '?title=' + t + '&body=' + bd + '&labels=waitlist', '_blank', 'noopener'); } catch (e) {} via = 'github'; }
+              status.textContent = via === 'server' ? '已提交，我们会联系你。' : (via === 'email' ? '已打开邮件，请发送以完成预约。' : '已在本地记录，并打开 GitHub 预约（公开提交）。');
+              toast('预约已记录'); close();
+            } catch (e) { status.textContent = '提交失败：' + (e && e.message ? e.message : e); submit.disabled = false; submit.textContent = old; }
+          });
+          bar.appendChild(submit); body.appendChild(bar);
+          body.appendChild(E('div', { class: 'disclosure', text: '收集渠道可在配置中改为私有：WAITLIST.endpoint（POST JSON）或 WAITLIST.contactEmail（邮件）；缺省回退 GitHub Issue。仅用于内测/商务联系。' }));
         });
       }
 

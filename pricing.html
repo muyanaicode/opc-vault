@@ -1,0 +1,90 @@
+<!doctype html><html lang="zh-CN"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>OPC Vault · 定价与托管预约</title>
+<style>
+  :root{--bg:#0e1116;--panel:#161b23;--panel2:#1d232d;--line:#28303c;--text:#e8ebf1;--t2:#9aa4b2;--acc:#6ea0ff;--ok:#2fbf71}
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{background:radial-gradient(1200px 480px at 20% -10%,#1b2a4a 0,#0e1116 55%);color:var(--text);font:14px/1.7 -apple-system,BlinkMacSystemFont,"PingFang SC","Hiragino Sans GB",sans-serif;min-height:100vh;padding:40px 20px}
+  .wrap{max-width:1080px;margin:0 auto}
+  header{display:flex;align-items:center;gap:12px;margin-bottom:6px}
+  .logo{width:40px;height:40px;border-radius:11px;background:var(--acc);display:flex;align-items:center;justify-content:center;font-weight:800;color:#07101f}
+  h1{font-size:24px;letter-spacing:-.5px}h1 .beta{font-size:11px;background:var(--acc);color:#fff;border-radius:6px;padding:2px 7px;vertical-align:middle;margin-left:8px}
+  .sub{color:var(--t2);margin:6px 0 26px}
+  .plans{display:flex;gap:16px;flex-wrap:wrap}
+  .plan{flex:1 1 260px;background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:20px;display:flex;flex-direction:column;gap:10px}
+  .plan.reco{border-color:var(--acc);box-shadow:0 0 0 1px var(--acc) inset}
+  .pname{font-size:15px;font-weight:700;display:flex;align-items:center;gap:8px}
+  .badge{font-size:10px;background:var(--acc);color:#fff;border-radius:6px;padding:1px 6px}
+  .price{font-size:32px;font-weight:800;letter-spacing:-1px}.price small{font-size:12px;font-weight:500;color:var(--t2);margin-left:6px}
+  .desc{color:var(--t2);font-size:13px}.bul{color:#c7cedb;font-size:13px}.bul div{margin:3px 0}
+  .btn{margin-top:auto;height:38px;border-radius:9px;border:1px solid var(--line);background:var(--panel2);color:var(--text);font:inherit;font-size:13px;cursor:pointer}
+  .btn.primary{background:var(--acc);border-color:var(--acc);color:#06101f;font-weight:700}
+  .btn:hover{filter:brightness(1.06)}
+  .section{margin-top:34px;background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:22px}
+  .section h2{font-size:16px;margin-bottom:6px}
+  .field{margin:10px 0}.field label{display:block;color:var(--t2);font-size:12px;margin-bottom:4px}
+  input[type=email],input[type=text],textarea{width:100%;background:var(--panel2);border:1px solid var(--line);border-radius:8px;color:var(--text);font:inherit;font-size:13px;padding:9px 11px;outline:none}
+  textarea{min-height:76px;resize:vertical}
+  .row{display:flex;align-items:flex-start;gap:8px;color:var(--t2);font-size:12px;margin:10px 0}
+  .status{font-size:13px;min-height:18px;color:var(--ok)}
+  .disclosure{color:var(--t2);font-size:11.5px;margin-top:10px;line-height:1.6}
+  a{color:var(--acc)}.foot{color:var(--t2);font-size:12px;text-align:center;margin-top:26px}
+</style></head><body>
+<div class="wrap">
+  <header><div class="logo">章</div><div><h1>OPC Vault<span class="beta">Beta</span></h1></div></header>
+  <div class="sub">一人公司的「加密账套金库」 · 本地优先 · 端到端加密 · 开源自托管免费</div>
+
+  <div class="plans" id="plans"></div>
+
+  <div class="section" id="waitlist">
+    <h2>托管版内测预约 / 联系我们</h2>
+    <div class="sub" style="margin:6px 0 14px">托管版（免运维、多端同步、自动备份）正在内测。留下联系方式，开放时通知你。</div>
+    <div class="field"><label>邮箱（必填）</label><input id="wl-email" type="email" placeholder="you@example.com" /></div>
+    <div class="field"><label>公司/主体或团队规模（选填）</label><input id="wl-org" type="text" placeholder="如：一人公司 / 5 人团队" /></div>
+    <div class="field"><label>需求说明（选填）</label><textarea id="wl-note" placeholder="你最看重的能力：多端同步 / 自动备份 / 团队权限…"></textarea></div>
+    <label class="row"><input id="wl-consent" type="checkbox" /><span>我已阅读并同意 <a href="./legal.html#privacy" target="_blank" rel="noopener">《隐私政策》</a></span></label>
+    <button class="btn primary" id="wl-submit" style="width:160px">提交预约</button>
+    <div class="status" id="wl-status"></div>
+    <div class="disclosure">收集渠道可配置为私有：页面脚本顶部的 <code>WAITLIST.endpoint</code>（POST JSON）或 <code>WAITLIST.contactEmail</code>（邮件）；缺省回退 GitHub Issue（公开）。仅用于内测/商务联系。</div>
+  </div>
+
+  <div class="foot">© 2026 沐言 AI · <a href="./">返回应用</a> · <a href="./legal.html">用户协议 / 隐私 / 免责</a> · <a href="https://github.com/muyanaicode/opc-vault" target="_blank" rel="noopener">GitHub</a></div>
+</div>
+<script>
+  var PRICING = { currency: '¥', plans: [
+    { id:'oss', name:'开源版 · 自托管', price:'0', unit:'永久免费', badge:'推荐', desc:'本地优先、端到端加密，能力不阉割', action:'open', bullets:['公司主体 ⟷ 账套（多对多）','本地 AES-256 加密、零服务器','导入/导出加密备份、Passkey','税务日历提醒、API Key 管理','MIT 开源，自托管永久免费'] },
+    { id:'managed', name:'托管版 · Managed', price:'待定', unit:'订阅制 · 内测预约', badge:'内测', desc:'免运维、跨设备同步、自动备份', action:'waitlist', bullets:['云端加密同步（多端）','自动备份与恢复','团队协作与权限','优先支持'] },
+    { id:'team', name:'团队 / 企业', price:'定制', unit:'按需报价', badge:'', desc:'私有化部署与定制', action:'waitlist', bullets:['私有化 / 专属实例','SSO 与审计','合同与发票'] }
+  ] };
+  var WAITLIST = { endpoint:'', contactEmail:'', githubNewIssue:'https://github.com/muyanaicode/opc-vault/issues/new' };
+  function el(tag, cls, text){ var e=document.createElement(tag); if(cls)e.className=cls; if(text!=null)e.textContent=text; return e; }
+  var plansHost=document.getElementById('plans');
+  PRICING.plans.forEach(function(pl){
+    var c=el('div','plan'+(pl.id==='oss'?' reco':''));
+    var n=el('div','pname',pl.name); if(pl.badge)n.appendChild(el('span','badge',pl.badge)); c.appendChild(n);
+    var p=el('div','price',(pl.price==='0'?PRICING.currency+'0':pl.price)); p.appendChild(el('small','',pl.unit)); c.appendChild(p);
+    c.appendChild(el('div','desc',pl.desc));
+    var b=el('div','bul'); pl.bullets.forEach(function(x){ b.appendChild(el('div','','· '+x)); }); c.appendChild(b);
+    var btn=el('button','btn'+(pl.action==='open'?' primary':''), pl.action==='open'?'打开应用':(pl.id==='managed'?'预约内测':'联系我们'));
+    btn.addEventListener('click', function(){ if(pl.action==='open'){ location.href='./'; } else { document.getElementById('wl-email').focus(); document.getElementById('waitlist').scrollIntoView({behavior:'smooth'}); } });
+    c.appendChild(btn); plansHost.appendChild(c);
+  });
+  var CONFIG = WAITLIST;
+  document.getElementById('wl-submit').addEventListener('click', async function(){
+    var btn=this, st=document.getElementById('wl-status'), email=document.getElementById('wl-email').value.trim(), org=document.getElementById('wl-org').value.trim(), note=document.getElementById('wl-note').value.trim();
+    if(!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)){ st.style.color='#ff9a9a'; st.textContent='请输入有效邮箱'; return; }
+    if(!document.getElementById('wl-consent').checked){ st.style.color='#ff9a9a'; st.textContent='请先勾选同意隐私政策'; return; }
+    btn.disabled=true; var old=btn.textContent; btn.textContent='提交中…';
+    try{
+      var rec={plan:'waitlist',planName:'托管版',email:email,org:org,note:note,ts:new Date().toISOString()};
+      try{ var a=JSON.parse(localStorage.getItem('opcv_waitlist_v1')||'[]'); a.push(rec); localStorage.setItem('opcv_waitlist_v1',JSON.stringify(a)); }catch(e){}
+      var via='local';
+      if(CONFIG.endpoint){ var r=await fetch(CONFIG.endpoint,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(rec)}); if(!r.ok)throw new Error('HTTP '+r.status); via='server'; }
+      else if(CONFIG.contactEmail){ var subj=encodeURIComponent('【OPC Vault 托管预约】'); var bd=encodeURIComponent('邮箱：'+email+'\n主体/规模：'+org+'\n备注：'+note+'\n时间：'+rec.ts); location.href='mailto:'+CONFIG.contactEmail+'?subject='+subj+'&body='+bd; via='email'; }
+      else { var t=encodeURIComponent('【托管预约】'+email); var b2=encodeURIComponent('邮箱：'+email+'\n主体/规模：'+org+'\n备注：'+note+'\n（GitHub Issue 公开提交）'); try{ window.open(CONFIG.githubNewIssue+'?title='+t+'&body='+b2+'&labels=waitlist','_blank','noopener'); }catch(e){} via='github'; }
+      st.style.color='var(--ok)'; st.textContent= via==='server'?'已提交，我们会联系你。':(via==='email'?'已打开邮件，请发送以完成预约。':'已在本地记录，并打开 GitHub 预约（公开提交）。');
+      btn.textContent=old; btn.disabled=false;
+    }catch(e){ st.style.color='#ff9a9a'; st.textContent='提交失败：'+(e&&e.message?e.message:e); btn.textContent=old; btn.disabled=false; }
+  });
+</script>
+</body></html>
