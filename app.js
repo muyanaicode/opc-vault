@@ -11,6 +11,30 @@
     const IDLE_LOCK_MS = 5 * 60 * 1000;
     const TESSERACT_CDN = 'https://cdn.jsdelivr.net/npm/tesseract.js@5.1.0/dist/tesseract.min.js';
     const OPC_ECOSYSTEM = { brand: '沐言 AI', nav: 'https://boyue.ai', businessOs: 'https://boyue.ai' };
+    const LEGAL_VERSION = '2026-11-09';
+    const LEGAL = {
+      terms: { title: '用户协议', sections: [
+        ['1. 服务说明', 'OPC Vault 是「本地优先、端到端加密」的公司主体与账套资料管理工具。开源版以 MIT 许可按「现状」提供，可自托管，也可在演示站体验。'],
+        ['2. 你的数据', '数据仅保存在本机浏览器 IndexedDB 并加密；请自行保管主密码并定期导出备份。遗忘主密码无法解密，我们无法恢复。'],
+        ['3. 使用限制', '不得用于违法用途，不得侵害他人权益，不得伪造第三方印章或资料。'],
+        ['4. 开源许可', '本仓库以 MIT 许可证开源，自托管永久免费；第三方字库/组件遵循其各自许可。'],
+        ['5. 变更与终止', '我们可更新本协议，重大变更在仓库说明；你可随时停止使用并删除本机数据。']
+      ] },
+      privacy: { title: '隐私政策', sections: [
+        ['1. 我们不收集', '默认版本不设服务器、无账号体系、无遥测；账套、密钥等数据加密后仅存本机，不上传。'],
+        ['2. 本地存储', '使用浏览器 IndexedDB 存储加密数据；主密码只在本地用于派生密钥，不发送到任何服务器。'],
+        ['3. 你主动触发的第三方', '浏览器系统通知、营业执照 OCR 识别模型（CDN 下载）、以及（在 DeepSeek Harness 中）本机识别路由；均用于完成你的主动操作，在本地或本机处理。'],
+        ['4. 你的权利', '可随时导出加密备份、清空/删除本机数据。'],
+        ['5. 联系方式', '通过 GitHub Issues 联系：muyanaicode/opc-vault。']
+      ] },
+      disclaimer: { title: '免责声明', sections: [
+        ['1. 非专业意见', '税务日历/提醒仅为辅助，不构成税务、法律或会计意见，且不代申报、不代提交；截止与口径以电子税务局「我的待办」及主管税务机关为准。'],
+        ['2. 密钥安全', 'API Key 与主密码安全由你负责；「一键复制」为明文剪贴板操作，请注意环境，勿粘贴到不可信位置。'],
+        ['3. 电子印章', '如另使用 OPC Seal 生成印章图像，仅用于本主体自用的视觉预览/归档，不具《电子签名法》意义上的法律效力；对外签署请使用持牌 CA/电子签章平台并完成合规备案。'],
+        ['4. 无担保与责任限制', '软件按「现状」提供，不保证无缺陷或满足特定用途；在法律允许范围内，作者不对因使用造成的间接损失承担责任。']
+      ] }
+    };
+
     // 税务档案字段（中国报税场景）
     const TAX_FIELDS = [
       { key: 'province', label: '省份/地区', placeholder: '如 北京' },
@@ -681,6 +705,9 @@
 "@media (prefers-reduced-motion: reduce){",
       "  .opcv-root *{ transition:none !important; animation:none !important; }",
       "}",
+      ".opcv-beta{ display:inline-block; margin-left:8px; font-size:10px; font-weight:700; color:#fff; background:var(--dsw-alias-brand-primary); border-radius:6px; padding:1px 6px; vertical-align:middle; letter-spacing:.5px; }",
+      ".opcv-footer{ display:flex; gap:14px; align-items:center; flex-wrap:wrap; margin-top:22px; padding-top:14px; border-top:1px solid var(--dsw-alias-border-l1); font-size:12px; color:var(--dsw-alias-label-secondary); }",
+      ".opcv-footlink{ background:none; border:none; color:var(--dsw-alias-label-secondary); cursor:pointer; font:inherit; padding:0; text-decoration:underline; }",
     ].join('\n');
 
     /* ============================ boot ============================ */
@@ -894,7 +921,7 @@
         header.appendChild(E('div', { class: 'opcv-brand' },
           E('div', { class: 'opcv-brandicon', html: SHIELD_BIG }),
           E('div', { class: 'opcv-brandtext' },
-            E('h1', { class: 'opcv-title', text: 'OPC Vault' }),
+            E('h1', { class: 'opcv-title' }, 'OPC Vault', E('span', { class: 'opcv-beta', text: 'Beta' })),
             E('div', { class: 'opcv-sub', text: '公司主体 ' + state.data.subjects.length + ' · 账套 ' + state.data.accountSets.length + ' · 关联 ' + relCount() + ' · 本地加密存储' })
           )
         ));
@@ -939,6 +966,10 @@
 
         contentHost = E('div');
         app.appendChild(contentHost);
+        const foot = E('div', { class: 'opcv-footer' });
+        [['terms','用户协议'],['privacy','隐私政策'],['disclaimer','免责声明']].forEach(([k,label]) => { const b = E('button', { class: 'opcv-footlink', text: label }); b.addEventListener('click', () => openLegal(k)); foot.appendChild(b); });
+        foot.appendChild(E('span', { text: 'v0.1.0 · Beta · 本地加密 · 无服务器' }));
+        app.appendChild(foot);
         shell.appendChild(app);
 
         if (state.view === 'overview') renderOverview();
@@ -1209,9 +1240,11 @@
       function ymd(d){ const z=n=>String(n).padStart(2,'0'); return d.getFullYear()+'-'+z(d.getMonth()+1)+'-'+z(d.getDate()); }
       function adjustWeekend(d){ const w=d.getDay(); if(w===6)d.setDate(d.getDate()+2); else if(w===0)d.setDate(d.getDate()+1); return d; }
       function daysLeftOf(due){ const t=new Date(); t.setHours(0,0,0,0); const dd=new Date(due); dd.setHours(0,0,0,0); return Math.round((dd-t)/86400000); }
-      function nextMonth15(now){ let y=now.getFullYear(),m=now.getMonth(); let d=new Date(y,m,15); if(now.getDate()>15) d=new Date(y,m+1,15); return adjustWeekend(d); }
-      function nextQuarter15(now){ const qEnds=[2,5,8,11]; for(const qe of qEnds){ const due=new Date(now.getFullYear(),qe+1,15); if(due>=now) return adjustWeekend(due); } return adjustWeekend(new Date(now.getFullYear()+1,3,15)); }
-      function annualDue(now,month0,day){ let y=now.getFullYear(); let d=new Date(y,month0,day); if(d<now) d=new Date(y+1,month0,day); return adjustWeekend(d); }
+      const TAX_RULES = { version: '2026.11-r1', filingDay: 15, annual: { corporateIncome: { month: 5, day: 31 }, businessIncome: { month: 3, day: 31 }, gsxt: { month: 6, day: 30 } }, regionOverrides: {}, note: '月/季申报截止为次月/季后 15 日（遇周末顺延）；法定节假日以电子税务局「我的待办」为准；规则可按年份/地区维护。' };
+      function taxRuleFor(province){ return (TAX_RULES.regionOverrides && TAX_RULES.regionOverrides[province]) || TAX_RULES; }
+      function nextFilingDay(now, rule){ const day=(rule&&rule.filingDay)||15; let d=new Date(now.getFullYear(),now.getMonth(),day); if(now.getDate()>day) d=new Date(now.getFullYear(),now.getMonth()+1,day); return adjustWeekend(d); }
+      function nextQuarterFiling(now, rule){ const qEnds=[2,5,8,11]; const day=(rule&&rule.filingDay)||15; for(const qe of qEnds){ const due=new Date(now.getFullYear(),qe+1,day); if(due>=now) return adjustWeekend(due); } return adjustWeekend(new Date(now.getFullYear()+1,3,day)); }
+      function annualDueRule(now, spec){ const y0=now.getFullYear(); const sp=spec||{month:12,day:31}; let d=new Date(y0,sp.month-1,sp.day); if(d<now) d=new Date(y0+1,sp.month-1,sp.day); return adjustWeekend(d); }
       function getTaxProfile(id){
         state.data.taxProfiles = state.data.taxProfiles || {};
         let p=state.data.taxProfiles[id];
@@ -1220,7 +1253,7 @@
       }
       function buildTaxTasks(p, now){
         const v=p.values||{}; const general=/一般/.test(v.taxpayer||''); const staff=!/无|否|仅法人/.test(v.hasStaff||'有员工') && !/仅法人/.test(v.hasStaff||'');
-        const q=nextQuarter15(now), m=nextMonth15(now);
+        const rule=taxRuleFor(v.province||''); const q=nextQuarterFiling(now, rule), m=nextFilingDay(now, rule);
         const tasks=[]; const add=(name,system,cadence,due,link,note)=>{ const dl=daysLeftOf(due); tasks.push({name,system,cadence,due:ymd(due),daysLeft:dl,status:dl<0?'overdue':dl<=7?'soon':'ok',link:link,note:note||''}); };
         const ent=regionUrl(v.province||'北京');
         const personal='https://etax.chinatax.gov.cn';
@@ -1231,9 +1264,9 @@
         add('财务报表（季报）','电子税务局 · 企业业务','每季',q,ent);
         add('财产和行为税 / 印花税（合并申报）','电子税务局 · 企业业务','每季',q,ent);
         if(staff) add('社保 / 公积金申报缴纳','当地社保/公积金平台','每月',m,ent);
-        add('企业所得税汇算清缴（上年度）','电子税务局 · 企业业务','每年',annualDue(now,4,31),ent);
-        add('个人所得税经营所得汇算（上年度）','自然人电子税务局','每年',annualDue(now,2,31),personal);
-        add('工商年报（上年度）','国家企业信用信息公示系统','每年',annualDue(now,5,30),'https://www.gsxt.gov.cn');
+        add('企业所得税汇算清缴（上年度）','电子税务局 · 企业业务','每年',annualDueRule(now, rule.annual.corporateIncome),ent);
+        add('个人所得税经营所得汇算（上年度）','自然人电子税务局','每年',annualDueRule(now, rule.annual.businessIncome),personal);
+        add('工商年报（上年度）','国家企业信用信息公示系统','每年',annualDueRule(now, rule.annual.gsxt),'https://www.gsxt.gov.cn');
         tasks.sort((a,b)=>a.daysLeft-b.daysLeft);
         if(/零/.test(v.zero||'')) tasks.forEach(t=>{ t.note=(t.note?t.note+'；':'')+'零申报也需按期提交'; });
         return tasks;
@@ -1281,7 +1314,7 @@
         const guide=E('button',{class:'opcv-btn', text:'办税向导（china-etax-wizard）'}); guide.addEventListener('click', openTaxGuide);
         const copy=E('button',{class:'opcv-btn', text:'复制本期清单'}); copy.addEventListener('click', async ()=>{ const txt=unfiled.map(t=>'- '+t.name+'（'+t.system+'，截止 '+t.due+'）').join('\n'); const body='【'+(subj.values.companyName||'')+'】报税清单\n'+txt; const ok=await copyText(body); toast(ok?'已复制本期清单':'复制失败'); });
         btns.appendChild(remind); btns.appendChild(guide); btns.appendChild(copy); card.appendChild(btns);
-        card.appendChild(E('div',{class:'disclosure', text:'提醒口径：月报/季报默认每月/季后 15 日（遇周末顺延；节假日以电子税务局「我的待办」为准）。本工具仅做提醒与清单，不代申报、不代提交。'}));
+        card.appendChild(E('div',{class:'disclosure', text:'报税规则 '+TAX_RULES.version+'：'+TAX_RULES.note+' 本工具仅提醒与清单，不代申报、不构成税务意见。'}));
         contentHost.appendChild(card);
       }
       function showDueModal(title, items){
@@ -1586,6 +1619,17 @@
       }
 
       /* ---------- OPC 生态（渐进引流，不打扰） ---------- */
+      function openLegal(kind) {
+        const c = LEGAL[kind] || LEGAL.terms;
+        openModal(c.title + '（' + LEGAL_VERSION + '）', (body) => {
+          c.sections.forEach(([h, t]) => {
+            body.appendChild(E('div', { class: 'opcv-cardtitle', style: 'margin-top:10px;', text: h }));
+            body.appendChild(E('div', { class: 'opcv-muted', style: 'text-align:left;margin:4px 0;line-height:1.7;', text: t }));
+          });
+          body.appendChild(E('div', { class: 'disclosure', text: '生效日期：' + LEGAL_VERSION + ' · 沐言 AI · 疑问请通过 GitHub Issues 反馈。' }));
+        });
+      }
+
       function openEcosystem() {
         openModal('OPC 生态 · 从个人金库到一人公司操作系统', (body) => {
           const item = (title, desc, btnText, onClick, primary) => {
