@@ -66,3 +66,12 @@
 - 注册：~/.dsh/cordis.patch.yml 追加 mcp-opc-vault（stdio，command=/bin/bash vault-mcp-launch.sh，env OPC_VAULT_FILE=~/.opc-vault/agent-vault.json）；已备份 .bak-opc-vault-<ts>，PyYAML+Ruby 双校验通过。
 - 验证：用测试 service 走钥匙串启动器 → MCP initialize/list_keys 正常；测试钥匙串项已删除。
 - 生效：需重启 DSH 才会加载 opc-vault MCP（当前会话未重启）。
+
+## 2026-11-09 · 第14轮（按状态机审计修复 Top 隐患）
+- 保存管线重写：dirty/saving/saved/failed 四态 + 串行化（saveChain）；lock()/卸载前 flush。修复“编辑后 600ms 内锁定丢数据”“header 恒显示已保存”。
+- 启动读取失败进入 error 模式（不再误落 create 覆盖旧库），提供「重试 / 从备份文件恢复」。
+- 导入原子化：meta+vault 单事务写入；导入前自动备份旧库（meta_backup/vault_backup + 下载 preimport 文件）。
+- 税务任务新增持久状态：待办→已申报→已验证 / 撤销（taxFiled：主体|任务|截止）；提醒/清单只统计未申报。
+- 模态框 AbortController：关闭即 abort；批量/执照/OCR/改密/密钥保存 await 后检查 signal，防关闭后越界写。
+- Passkey 增加「移除」；PRF 失败时提示（浏览器无法删除已建凭证）。
+- 验证：ego 5243 指示器 未保存…→已保存；编辑后立即锁定、解锁值保留（测试主体B）；税务已申报跨锁持久；5244 模拟 IDB 失败→error 页（重试/从备份恢复）。

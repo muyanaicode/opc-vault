@@ -88,6 +88,8 @@ window.__ModuleLoader__.load({
     }
     async function idbGet(k) { const db = await idb(); return new Promise((res, rej) => { const rq = db.transaction(DB_STORE, 'readonly').objectStore(DB_STORE).get(k); rq.onsuccess = () => res(rq.result); rq.onerror = () => rej(rq.error); }); }
     async function idbSet(k, v) { const db = await idb(); return new Promise((res, rej) => { const tx = db.transaction(DB_STORE, 'readwrite'); tx.objectStore(DB_STORE).put(v, k); tx.oncomplete = () => res(); tx.onerror = () => rej(tx.error); }); }
+    async function idbSetMany(obj) { const db = await idb(); return new Promise((res, rej) => { const tx = db.transaction(DB_STORE, 'readwrite'); const os = tx.objectStore(DB_STORE); Object.keys(obj).forEach((k) => os.put(obj[k], k)); tx.oncomplete = () => res(); tx.onerror = () => rej(tx.error); }); }
+    async function idbGetMany(keys) { const db = await idb(); return new Promise((res, rej) => { const tx = db.transaction(DB_STORE, 'readonly'); const os = tx.objectStore(DB_STORE); const out = {}; let n = keys.length; keys.forEach((k) => { const rq = os.get(k); rq.onsuccess = () => { out[k] = rq.result; if (--n === 0) res(out); }; rq.onerror = () => rej(rq.error); }); if (!keys.length) res(out); }); }
 
     /* ============================ schema — 公司主体 ============================ */
     const SUBJECT_GROUPS = [
@@ -694,7 +696,7 @@ window.__ModuleLoader__.load({
     /* ============================ boot ============================ */
     function boot(root) {
       const state = {
-        mode: 'loading', meta: null, dek: null,
+        mode: 'loading', error: '', meta: null, dek: null,
         data: null,            // { v:2, subjects:[], accountSets:[], customFields:[] }
         view: 'overview',
         activeSubject: null, activeAccount: null,
@@ -702,6 +704,8 @@ window.__ModuleLoader__.load({
       };
       let shell = null, contentHost = null, saveIndicator = null, tabsHost = null;
       let saveTimer = null, idleInt = null, lastActivity = Date.now(), toastEl = null, toastTimer = null;
+      let saveState = 'saved', saveDirty = false, saveSeq = 0, savedSeq = 0, saveChain = Promise.resolve();
+      const SAVE_LABEL = { saved: '已保存', dirty: '未保存…', saving: '保存中…', failed: '保存失败' };
       const globalOff = [];
 
       root.classList.add('opcv-root');
@@ -736,18 +740,32 @@ window.__ModuleLoader__.load({
       function relCount() { return (state.data.accountSets || []).reduce((n, a) => n + (a.subjectIds ? a.subjectIds.length : 0), 0); }
 
       /* ---------- persistence ---------- */
-      function scheduleSave() { clearTimeout(saveTimer); saveTimer = setTimeout(saveNow, 600); }
-      async function saveNow() {
-        if (!state.dek || !state.data) return;
-        try { state.data.updatedAt = Date.now(); const payload = await encryptObject(state.dek, state.data); await idbSet('vault', payload); if (saveIndicator) saveIndicator.textContent = '已保存'; }
-        catch (e) { if (saveIndicator) saveIndicator.textContent = '保存失败'; }
+      function paintSave() { if (saveIndicator) saveIndicator.textContent = SAVE_LABEL[saveState] || '已保存'; }
+      function scheduleSave() { saveDirty = true; saveState = 'dirty'; paintSave(); clearTimeout(saveTimer); saveTimer = setTimeout(() => { flushSave(); }, 600); }
+      function flushSave() {
+        clearTimeout(saveTimer); saveTimer = null;
+        if (!state.dek || !state.data || !saveDirty) return saveChain;
+        const mySeq = ++saveSeq; saveDirty = false; saveState = 'saving'; paintSave();
+        saveChain = saveChain.then(async () => {
+          if (!state.dek || !state.data) { saveState = 'saved'; paintSave(); return; }
+          try {
+            state.data.updatedAt = Date.now();
+            const payload = await encryptObject(state.dek, state.data);
+            await idbSet('vault', payload);
+            savedSeq = Math.max(savedSeq, mySeq);
+            if (!saveDirty) { saveState = 'saved'; paintSave(); }
+          } catch (e) { saveState = 'failed'; paintSave(); }
+        }).then(() => { if (saveDirty) return flushSave(); });
+        return saveChain;
       }
+      async function saveNow() { saveDirty = true; return flushSave(); }
 
       /* ---------- top-level render ---------- */
       function render() {
         if (!shell) return;
         shell.innerHTML = ''; contentHost = tabsHost = saveIndicator = null;
         if (state.mode === 'loading') { shell.appendChild(E('div', { class: 'opcv-empty', text: '正在加载…' })); return; }
+        if (state.mode === 'error') return renderError();
         if (state.mode === 'create') return renderCreate();
         if (state.mode === 'unlock') return renderUnlock();
         if (state.mode === 'app') return renderApp();
@@ -780,7 +798,7 @@ window.__ModuleLoader__.load({
             const meta = { app: 'opc-vault', v: 2, kdf: 'pbkdf2-sha256-600000', saltB64: bufToB64(salt), wrappedDEK: wrapped, createdAt: Date.now() };
             if (cb.checked && passkeyEligible()) { try { const pk = await registerPasskey(dek); if (pk.ok) meta.passkey = pk.record; else if (pk.reason === 'PRF_NOT_SUPPORTED') toast('此设备暂不支持 Passkey PRF，已跳过'); } catch (e) { toast('Passkey 未完成：' + (e && e.message ? e.message : e)); } }
             state.dek = dek; state.meta = meta;
-            state.data = { v: 2, subjects: [], accountSets: [], customFields: [], taxProfiles: {}, apiKeys: [], updatedAt: Date.now() };
+            state.data = { v: 2, subjects: [], accountSets: [], customFields: [], taxProfiles: {}, apiKeys: [], taxFiled: {}, updatedAt: Date.now() };
             await idbSet('meta', meta); await saveNow();
             state.mode = 'app'; state.view = 'overview'; lastActivity = Date.now();
             render(); toast('账套库已创建，数据仅保存在本机');
@@ -791,6 +809,23 @@ window.__ModuleLoader__.load({
         else { card.appendChild(E('div', { class: 'opcv-hint', text: '当前环境不支持 Passkey（需 HTTPS 或 http://localhost，且浏览器支持 WebAuthn PRF；macOS 建议用 Chrome）。可先用主密码，不影响使用。' })); }
         card.appendChild(btn);
         wrap.appendChild(card); shell.appendChild(wrap); setTimeout(() => pw.focus(), 30);
+      }
+
+      function renderError() {
+        const wrap = E('div', { class: 'opcv-center' });
+        const card = E('div', { class: 'opcv-auth' });
+        card.appendChild(E('div', { class: 'opcv-authicon', html: SHIELD_BIG }));
+        card.appendChild(E('h2', { class: 'opcv-h2', text: '无法读取本机账套库' }));
+        card.appendChild(E('p', { class: 'opcv-muted', text: '读取本机加密存储失败（可能是 IndexedDB 异常 / 隐私模式限制）。为避免误建新库覆盖旧数据，已停止启动。' }));
+        if (state.error) card.appendChild(E('div', { class: 'opcv-err', text: '错误：' + state.error }));
+        const retry = E('button', { class: 'opcv-btn opcv-primary', style: 'width:100%;height:36px;justify-content:center;', text: '重试' });
+        retry.addEventListener('click', async () => { retry.disabled = true; retry.textContent = '重试中…'; state.mode = 'loading'; render(); try { const meta = await idbGet('meta'); if (meta && meta.wrappedDEK) { state.meta = meta; state.mode = 'unlock'; } else state.mode = 'create'; } catch (e) { state.mode = 'error'; state.error = (e && e.message ? e.message : String(e)); } render(); });
+        card.appendChild(retry);
+        const imp = E('button', { class: 'opcv-btn', style: 'width:100%;height:34px;justify-content:center;margin-top:8px;', text: '从备份文件恢复' });
+        imp.addEventListener('click', importVault);
+        card.appendChild(imp);
+        card.appendChild(E('div', { class: 'opcv-hint', text: '若持续失败：用「从备份文件恢复」选择你导出的 .vault.json。' }));
+        wrap.appendChild(card); shell.appendChild(wrap);
       }
 
       function renderUnlock() {
@@ -837,7 +872,7 @@ window.__ModuleLoader__.load({
       async function finishUnlock(dek) {
         state.dek = dek;
         const payload = await idbGet('vault');
-        let data = payload ? await decryptObject(dek, payload) : { v: 2, subjects: [], accountSets: [], customFields: [], taxProfiles: {}, apiKeys: [], updatedAt: Date.now() };
+        let data = payload ? await decryptObject(dek, payload) : { v: 2, subjects: [], accountSets: [], customFields: [], taxProfiles: {}, apiKeys: [], taxFiled: {}, updatedAt: Date.now() };
         data = migrate(data);
         if (!data.subjects) data.subjects = [];
         if (!data.accountSets) data.accountSets = [];
@@ -845,11 +880,14 @@ window.__ModuleLoader__.load({
         state.data = data;
         if (!state.data.taxProfiles) state.data.taxProfiles = {};
         if (!Array.isArray(state.data.apiKeys)) state.data.apiKeys = [];
+        if (!state.data.taxFiled) state.data.taxFiled = {};
         state.mode = 'app'; state.view = 'overview'; lastActivity = Date.now();
         render();
       }
 
-      function lock(msg) {
+      async function lock(msg) {
+        try { await flushSave(); } catch (e) {}
+        clearTimeout(saveTimer); saveTimer = null;
         state.dek = null; state.data = null; state.armedImage = null; state.activeSubject = null; state.activeAccount = null;
         state.mode = 'unlock'; render(); if (msg) toast(msg);
       }
@@ -866,7 +904,7 @@ window.__ModuleLoader__.load({
             E('div', { class: 'opcv-sub', text: '公司主体 ' + state.data.subjects.length + ' · 账套 ' + state.data.accountSets.length + ' · 关联 ' + relCount() + ' · 本地加密存储' })
           )
         ));
-        saveIndicator = E('span', { class: 'opcv-save', text: '已保存' });
+        saveIndicator = E('span', { class: 'opcv-save', text: SAVE_LABEL[saveState] || '已保存' });
         const lockBtn = E('button', { class: 'opcv-btn', html: ICON.lock + '<span>锁定</span>' });
         lockBtn.addEventListener('click', () => lock('已锁定'));
         header.appendChild(E('div', { class: 'opcv-hactions' }, saveIndicator, lockBtn));
@@ -890,6 +928,9 @@ window.__ModuleLoader__.load({
             const why = E('button', { class: 'opcv-btn opcv-small', text: '为什么无法启用 Passkey？' });
             why.addEventListener('click', showPasskeyHelp); bar.appendChild(why);
           }
+        } else {
+          const rm = E('button', { class: 'opcv-btn opcv-small', html: ICON.key + '<span>移除 Passkey</span>' });
+          rm.addEventListener('click', removePasskey); bar.appendChild(rm);
         }
         app.appendChild(bar);
 
@@ -1056,7 +1097,7 @@ window.__ModuleLoader__.load({
       function keyDueList(){ const now = new Date(); now.setHours(0,0,0,0); const out = []; (state.data.apiKeys || []).forEach((k) => { if (!k.expiresAt) return; const d = new Date(k.expiresAt + 'T00:00:00'); if (isNaN(d)) return; const dl = Math.round((d - now) / 86400000); if (dl <= 30) out.push({ k: k, dl: dl }); }); return out.sort((a, b) => a.dl - b.dl); }
       async function enableKeyReminders(){ const due = keyDueList(); if (!('Notification' in window)) { toast('当前环境不支持系统通知；' + (due.length ? ('有 ' + due.length + ' 个 Key 临期/过期') : '暂无临期')); return; } try { const p = await Notification.requestPermission(); if (p === 'granted') { toast('已开启密钥到期提醒'); if (due.length) due.slice(0,4).forEach((x) => { try { new Notification('API Key 到期提醒', { body: x.k.name + '（' + (x.k.envName || '') + '）' + (x.dl < 0 ? ('已过期 ' + (-x.dl) + ' 天') : ('剩 ' + x.dl + ' 天')) }); } catch (e) {} }); } else toast('未授权通知'); } catch (e) { toast('通知不可用'); } }
       function openKeyModal(existing){
-        openModal(existing ? '编辑密钥' : '新增密钥', (body, close) => {
+        openModal(existing ? '编辑密钥' : '新增密钥', (body, close, signal) => {
           const nameI = E('input', { class: 'opcv-input', props: { value: existing ? existing.name : '' } });
           const catS = E('select', { class: 'opcv-input' }); [['llm','大模型'],['web','网站 / 服务'],['other','其他']].forEach(([v,l]) => { const o = document.createElement('option'); o.value = v; o.textContent = l; catS.appendChild(o); }); catS.value = existing ? existing.category : 'llm';
           const provI = E('input', { class: 'opcv-input', props: { value: existing ? existing.provider : '' } });
@@ -1074,6 +1115,7 @@ window.__ModuleLoader__.load({
           const bar = E('div', { class: 'row', style: 'margin-top:6px;' });
           const save = E('button', { class: 'opcv-btn opcv-primary', text: '保存' });
           save.addEventListener('click', async () => {
+            if (signal && signal.aborted) return;
             if (!nameI.value.trim()) { toast('请填名称'); return; }
             let env = envI.value.trim() || autoEnv(provI.value || nameI.value); envI.value = env;
             const g = guessProvider(env);
@@ -1201,7 +1243,9 @@ window.__ModuleLoader__.load({
         if(/零/.test(v.zero||'')) tasks.forEach(t=>{ t.note=(t.note?t.note+'；':'')+'零申报也需按期提交'; });
         return tasks;
       }
-      function taxDueAll(){ const now=new Date(); const arr=[]; (state.data.subjects||[]).forEach(s=>{ const p=getTaxProfile(s.id); buildTaxTasks(p,now).forEach(t=>{ if(t.status!=='ok'||t.daysLeft<=15) arr.push(Object.assign({subject:s.values.companyName||'未命名主体'},t)); }); }); return arr.sort((a,b)=>a.daysLeft-b.daysLeft); }
+      function taxFiledKey(sid,t){ return sid+'|'+t.name+'|'+t.due; }
+      function taxStatusOf(sid,t){ const r=(state.data.taxFiled||{})[taxFiledKey(sid,t)]; return r&&r.status?r.status:''; }
+      function taxDueAll(){ const now=new Date(); const arr=[]; (state.data.subjects||[]).forEach(s=>{ const p=getTaxProfile(s.id); buildTaxTasks(p,now).forEach(t=>{ if(taxStatusOf(s.id,t)) return; if(t.status!=='ok'||t.daysLeft<=15) arr.push(Object.assign({subject:s.values.companyName||'未命名主体'},t)); }); }); return arr.sort((a,b)=>a.daysLeft-b.daysLeft); }
       function renderTax(){
         contentHost.innerHTML='';
         const card=E('div',{class:'opcv-card'});
@@ -1217,22 +1261,30 @@ window.__ModuleLoader__.load({
         TAX_FIELDS.forEach(f=>pc.appendChild(fieldRow(f, rec)));
         card.appendChild(pc);
         const tasks=buildTaxTasks(rec,new Date());
-        const overdue=tasks.filter(t=>t.status==='overdue').length, soon=tasks.filter(t=>t.status==='soon').length;
-        card.appendChild(E('div',{class:'opcv-hint', text:'近期待办 '+tasks.length+' 项：逾期 '+overdue+' · 7天内到期 '+soon+'。'+ (/零/.test(rec.values.zero||'')?'（本期按零申报，仍需按期提交）':'')}));
+        const unfiled=tasks.filter(t=>!taxStatusOf(subj.id,t));
+        const filedCount=tasks.length-unfiled.length;
+        const overdue=unfiled.filter(t=>t.status==='overdue').length, soon=unfiled.filter(t=>t.status==='soon').length;
+        card.appendChild(E('div',{class:'opcv-hint', text:'近期待办 '+unfiled.length+' 项（已申报/已验证 '+filedCount+'）：逾期 '+overdue+' · 7天内到期 '+soon+'。'+ (/零/.test(rec.values.zero||'')?'（本期按零申报，仍需按期提交）':'')}));
         tasks.forEach(t=>{
-          const row=E('div',{class:'opcv-relrow'});
+          const st=taxStatusOf(subj.id,t); const fkey=taxFiledKey(subj.id,t);
+          const row=E('div',{class:'opcv-relrow', style: st?'opacity:.72;':''});
           row.appendChild(E('div',{style:'flex:1;min-width:0;'}, E('div',{class:'opcv-relname', text:t.name}), E('div',{class:'opcv-muted', style:'margin:2px 0 0;text-align:left;', text:t.system+' · '+t.cadence+(t.note?' · '+t.note:'')})));
           const right=E('div',{style:'display:flex;align-items:center;gap:8px;'});
           right.appendChild(E('span',{class:'pc-src', text:'截止 '+t.due}));
-          const cls=t.status==='overdue'?'off':(t.status==='soon'?'on':'on');
-          right.appendChild(E('span',{class:'badge '+cls, text:(t.status==='overdue'?'逾期':'剩'+t.daysLeft+'天')}));
+          const cls = st ? 'on' : (t.status==='overdue'?'off':'on');
+          const btxt = st==='verified' ? '已验证' : (st==='filed' ? '已申报' : (t.status==='overdue'?'逾期':'剩'+t.daysLeft+'天'));
+          right.appendChild(E('span',{class:'badge '+cls, text:btxt}));
           const open=E('button',{class:'opcv-btn opcv-small', text:'打开'}); open.addEventListener('click',()=>{ if(t.link) window.open(t.link,'_blank','noopener'); });
-          right.appendChild(open); row.appendChild(right); card.appendChild(row);
+          right.appendChild(open);
+          if(!st){ const mk=E('button',{class:'opcv-btn opcv-small', text:'标记已申报'}); mk.addEventListener('click', async ()=>{ state.data.taxFiled=state.data.taxFiled||{}; state.data.taxFiled[fkey]={status:'filed',at:Date.now()}; await saveNow(); renderTax(); toast('已标记申报'); }); right.appendChild(mk); }
+          else if(st==='filed'){ const vf=E('button',{class:'opcv-btn opcv-small', text:'回执已验证'}); vf.addEventListener('click', async ()=>{ state.data.taxFiled[fkey]={status:'verified',at:Date.now()}; await saveNow(); renderTax(); toast('已标记回执验证'); }); const un=E('button',{class:'opcv-btn opcv-small', text:'撤销'}); un.addEventListener('click', async ()=>{ delete state.data.taxFiled[fkey]; await saveNow(); renderTax(); }); right.appendChild(vf); right.appendChild(un); }
+          else { const un=E('button',{class:'opcv-btn opcv-small', text:'撤销'}); un.addEventListener('click', async ()=>{ delete state.data.taxFiled[fkey]; await saveNow(); renderTax(); }); right.appendChild(un); }
+          row.appendChild(right); card.appendChild(row);
         });
         const btns=E('div',{class:'row', style:'margin-top:10px;'});
         const remind=E('button',{class:'opcv-btn', text:'开启到期提醒'}); remind.addEventListener('click', enableTaxReminders);
         const guide=E('button',{class:'opcv-btn', text:'办税向导（china-etax-wizard）'}); guide.addEventListener('click', openTaxGuide);
-        const copy=E('button',{class:'opcv-btn', text:'复制本期清单'}); copy.addEventListener('click', async ()=>{ const txt=tasks.map(t=>'- '+t.name+'（'+t.system+'，截止 '+t.due+'）').join('\n'); const body='【'+(subj.values.companyName||'')+'】报税清单\n'+txt; const ok=await copyText(body); toast(ok?'已复制本期清单':'复制失败'); });
+        const copy=E('button',{class:'opcv-btn', text:'复制本期清单'}); copy.addEventListener('click', async ()=>{ const txt=unfiled.map(t=>'- '+t.name+'（'+t.system+'，截止 '+t.due+'）').join('\n'); const body='【'+(subj.values.companyName||'')+'】报税清单\n'+txt; const ok=await copyText(body); toast(ok?'已复制本期清单':'复制失败'); });
         btns.appendChild(remind); btns.appendChild(guide); btns.appendChild(copy); card.appendChild(btns);
         card.appendChild(E('div',{class:'disclosure', text:'提醒口径：月报/季报默认每月/季后 15 日（遇周末顺延；节假日以电子税务局「我的待办」为准）。本工具仅做提醒与清单，不代申报、不代提交。'}));
         contentHost.appendChild(card);
@@ -1467,16 +1519,17 @@ window.__ModuleLoader__.load({
       }
 
       async function runOCR(f, record, dataUrl) {
-        openModal('识别图片内容', (body) => {
+        openModal('识别图片内容', (body, close, signal) => {
           body.appendChild(E('div', { class: 'opcv-hint', id: 'opcv-ocr-status', text: '正在加载 OCR 引擎…（首次需联网下载识别模型）' }));
           body.appendChild(E('div', { class: 'opcv-pre', id: 'opcv-ocr-text', text: '' }));
         });
         const statusEl = document.getElementById('opcv-ocr-status'); const textEl = document.getElementById('opcv-ocr-text');
         try {
           const text = await ocrImage(dataUrl, (m) => { if (statusEl) statusEl.textContent = '识别中… ' + (m.status || '') + (m.progress != null ? ' ' + Math.round(m.progress * 100) + '%' : ''); });
+          if (signal && signal.aborted) return;
           if (statusEl) statusEl.textContent = '识别完成：'; if (textEl) textEl.textContent = text || '（未识别到文字）';
           const parsed = f.ocr === 'license' ? extractLicenseFields(text) : parseOCR(text);
-          if (f.ocr === 'license') { try { const recs = await aiImport(text); if (recs && recs.length) Object.assign(parsed, recs[0].subj || {}, recs[0].acc || {}); } catch (e) {} }
+          if (f.ocr === 'license') { try { const recs = await aiImport(text, signal); if (signal && signal.aborted) return; if (recs && recs.length) Object.assign(parsed, recs[0].subj || {}, recs[0].acc || {}); } catch (e) {} }
           const targets = f.ocr === 'idcard' ? ['legalRepName'] : (f.ocr === 'license' ? ['companyName', 'creditCode', 'legalRepName', 'registeredCapital', 'establishDate', 'companyType', 'registeredAddress', 'businessScope', 'registrationAuthority'] : ['companyName', 'creditCode', 'legalRepName', 'registeredCapital', 'establishDate']);
           let filled = 0;
           targets.forEach((k) => { if (parsed[k] && !String(record.values[k] || '').trim()) { record.values[k] = parsed[k]; filled++; } });
@@ -1515,6 +1568,7 @@ window.__ModuleLoader__.load({
 
       /* ---------- modal ---------- */
       function openModal(title, build) {
+        const ac = new AbortController();
         const overlay = E('div', { class: 'opcv-overlay' });
         const modal = E('div', { class: 'opcv-modal' });
         const head = E('div', { class: 'opcv-modalhead' });
@@ -1522,10 +1576,10 @@ window.__ModuleLoader__.load({
         const x = E('button', { class: 'opcv-iconbtn', html: ICON.close }); head.appendChild(x);
         const body = E('div', { class: 'opcv-modalbody' });
         modal.appendChild(head); modal.appendChild(body); overlay.appendChild(modal); root.appendChild(overlay);
-        const close = () => { overlay.remove(); document.removeEventListener('keydown', esc); };
+        const close = () => { try { ac.abort(); } catch (e) {} overlay.remove(); document.removeEventListener('keydown', esc); };
         const esc = (e) => { if (e.key === 'Escape') close(); };
         document.addEventListener('keydown', esc); x.addEventListener('click', close); overlay.addEventListener('click', (e) => { if (e.target === overlay) close(); });
-        build(body, close); return close;
+        build(body, close, ac.signal); return close;
       }
 
       /* ---------- OPC 生态（渐进引流，不打扰） ---------- */
@@ -1549,7 +1603,7 @@ window.__ModuleLoader__.load({
 
       /* ---------- change pwd / passkey ---------- */
       function openChangePassword() {
-        openModal('修改主密码', (body, close) => {
+        openModal('修改主密码', (body, close, signal) => {
           body.appendChild(E('div', { class: 'opcv-hint', text: '修改主密码只更换解锁钥匙，不会重新加密全部资料。旧密码将立即失效。' }));
           const cur = E('input', { class: 'opcv-input', props: { type: 'password', placeholder: '当前主密码' } });
           const nw = E('input', { class: 'opcv-input', props: { type: 'password', placeholder: '新主密码（至少 8 位）' } });
@@ -1562,6 +1616,7 @@ window.__ModuleLoader__.load({
             try {
               const curKek = await deriveKEK(cur.value, b64ToBuf(state.meta.saltB64));
               try { await unwrapDEK(state.meta.wrappedDEK.iv, state.meta.wrappedDEK.wrapped, curKek); } catch (e) { err.textContent = '当前主密码错误'; ok.disabled = false; ok.textContent = '确认修改'; return; }
+              if (signal && signal.aborted) return;
               const newSalt = randomBytes(SALT_BYTES); const newKek = await deriveKEK(nw.value, newSalt); const reWrapped = await wrapDEK(state.dek, newKek);
               state.meta.saltB64 = bufToB64(newSalt); state.meta.wrappedDEK = reWrapped; await idbSet('meta', state.meta); await saveNow();
               close(); toast('主密码已修改');
@@ -1608,6 +1663,13 @@ window.__ModuleLoader__.load({
         });
       }
 
+      async function removePasskey() {
+        if (!state.meta || !state.meta.passkey) { toast('未启用 Passkey'); return; }
+        if (!window.confirm('移除 Passkey 快捷解锁？（主密码解锁始终可用，不受影响）')) return;
+        try { delete state.meta.passkey; await idbSet('meta', state.meta); renderApp(); toast('已移除 Passkey'); }
+        catch (e) { toast('移除失败：' + (e && e.message ? e.message : e)); }
+      }
+
       async function enablePasskey() {
         const env = passkeyEnv();
         if (!env.ok) { toast(env.msg); return; }
@@ -1634,7 +1696,7 @@ window.__ModuleLoader__.load({
 
       /* ---------- smart bulk import ---------- */
       function openLicenseImport() {
-        openModal('营业执照识别（电子营业执照 / 实拍照片）', (body, close) => {
+        openModal('营业执照识别（电子营业执照 / 实拍照片）', (body, close, signal) => {
           body.appendChild(E('div', { class: 'opcv-hint', html: '上传或粘贴<b>营业执照图片</b>：电子营业执照截图、或执照实拍照片均可。图片正面、清晰、无遮挡时识别最准。识别后用<b>本地模型/规则</b>抽取工商信息，确认后自动创建公司主体（并把执照图存入「证照与印章」）。' }));
           const zone = E('div', { class: 'opcv-imgzone', attrs: { tabindex: '0' }, style: 'min-height:150px;' });
           zone.appendChild(E('div', { class: 'opcv-imgempty', text: '点击选择图片 · 拖入 · 聚焦后 Ctrl/⌘+V 粘贴' }));
@@ -1661,9 +1723,10 @@ window.__ModuleLoader__.load({
             status.textContent = '正在 OCR 识别文字…（首次需下载中文识别模型，请稍候）';
             try {
               const text = await ocrImage(dataUrl, (m) => { status.textContent = 'OCR 识别中… ' + (m.status || '') + (m.progress != null ? ' ' + Math.round(m.progress * 100) + '%' : ''); });
+              if (signal && signal.aborted) return;
               status.textContent = '文字已提取，正在结构化…';
               let fields = extractLicenseFields(text);
-              try { const recs = await aiImport(text); if (recs && recs.length) fields = Object.assign({}, fields, recs[0].subj || {}, recs[0].acc || {}); } catch (e) { /* 离线：仅规则 */ }
+              try { const recs = await aiImport(text, signal); if (signal && signal.aborted) return; if (recs && recs.length) fields = Object.assign({}, fields, recs[0].subj || {}, recs[0].acc || {}); } catch (e) { /* 离线：仅规则 */ }
               const labelMap = { companyName: '公司名称', creditCode: '统一社会信用代码', legalRepName: '法定代表人', registeredCapital: '注册资本', establishDate: '成立日期', companyType: '公司类型', registeredAddress: '注册地址', businessScope: '经营范围', registrationAuthority: '登记机关', legalRepPhone: '法人手机' };
               const keys = Object.keys(labelMap).filter((k) => fields[k] && String(fields[k]).trim());
               if (!keys.length) { preview.style.display = 'block'; preview.textContent = '未识别到工商字段。以下是 OCR 原文，可复制后到「批量导入」手动整理：\n\n' + (text || '（空）'); status.textContent = '未抽取到字段'; return; }
@@ -1688,7 +1751,7 @@ window.__ModuleLoader__.load({
         });
       }
       function openBulkImport() {
-        openModal('批量粘贴导入（AI / 自动识别多主体 · 多账套）', (body, close) => {
+        openModal('批量粘贴导入（AI / 自动识别多主体 · 多账套）', (body, close, signal) => {
           body.appendChild(E('div', { class: 'opcv-hint', html: '把资料一次性粘贴进来（支持<b>杂乱无标签的整段文字</b>、Excel 表格、或 JSON）。<b>「AI 识别」</b>用本机本地模型理解内容，最稳；<b>「规则识别」</b>离线可用、不联网。识别后自动创建主体与账套并自动关联。' }));
           const ta = E('textarea', { class: 'opcv-input opcv-textarea', style: 'min-height:180px;', props: { rows: 10, placeholder: '可直接粘贴一段乱文，例如：\n上海示例科技有限公司，统一社会信用代码91310115MA1K000000，法定代表人张三，电话13800000000。开户行工商银行上海分行，账号6222000011112222。深圳市测试贸易有限公司，统一社会信用代码91440300MA5ABCDE12，法定代表人李四，一般户开户行招商银行深圳分行，账号755900001111。\n（也支持「字段：值」多行 / Excel 表格 / JSON）' } });
           const preview = E('div', { class: 'opcv-pre', style: 'margin-top:10px;display:none;' });
@@ -1721,10 +1784,12 @@ window.__ModuleLoader__.load({
             if (!text.trim()) { toast('请先粘贴内容'); return; }
             aiBtn.disabled = true; const old = aiBtn.textContent; aiBtn.textContent = '本地模型识别中…';
             try {
-              const recs = await aiImport(text);
+              const recs = await aiImport(text, signal);
+              if (signal && signal.aborted) return;
               if (recs && recs.length) { doCreate(recs, 'AI'); }
               else { const fb = parseImport(text); if (fb.length) { toast('本地模型无结果，已回退规则识别'); doCreate(fb, '规则'); } else toast('AI 与规则均未识别到资料'); }
             } catch (e) {
+              if (signal && signal.aborted) return;
               const fb = parseImport(text);
               if (fb.length) { toast('本地模型不可用，已回退规则识别'); doCreate(fb, '规则'); }
               else toast('AI 识别失败：' + (e && e.message ? e.message : e));
@@ -1735,8 +1800,8 @@ window.__ModuleLoader__.load({
           setTimeout(() => ta.focus(), 30);
         });
       }
-      async function aiImport(text) {
-        const res = await fetch('/plugins/opc-vault/recognize', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ text }) });
+      async function aiImport(text, signal) {
+        const res = await fetch('/plugins/opc-vault/recognize', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ text }), signal });
         if (!res.ok) throw new Error('host route HTTP ' + res.status);
         const data = await res.json();
         if (!data || !data.ok || typeof data.raw !== 'string') throw new Error(data && data.error ? data.error : 'no model output');
@@ -1767,8 +1832,17 @@ window.__ModuleLoader__.load({
             const txt = await file.text(); const data = JSON.parse(txt);
             if (!data || data.app !== 'opc-vault' || !data.meta || !data.meta.saltB64 || !data.meta.wrappedDEK || !data.vault) throw new Error('不是有效的 OPC Vault 备份文件');
             if (!window.confirm('导入将覆盖当前本机账套库，且需要该备份的主密码才能解锁。确定继续？')) return;
-            await idbSet('meta', data.meta); await idbSet('vault', data.vault);
-            state.meta = data.meta; state.dek = null; state.data = null; state.mode = 'unlock'; render(); toast('已导入备份，请用该备份的主密码解锁');
+            const cur = await idbGetMany(['meta', 'vault']).catch(() => ({}));
+            if (cur && cur.meta && cur.vault) {
+              try {
+                await idbSetMany({ meta_backup: cur.meta, vault_backup: cur.vault });
+                const b = { app: 'opc-vault', version: 2, exportedAt: new Date().toISOString(), meta: cur.meta, vault: cur.vault };
+                const blob = new Blob([JSON.stringify(b, null, 2)], { type: 'application/json' }); const a = document.createElement('a');
+                a.href = URL.createObjectURL(blob); a.download = 'opc-vault-preimport-' + Date.now() + '.vault.json'; a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 3000);
+              } catch (e) {}
+            }
+            await idbSetMany({ meta: data.meta, vault: data.vault });
+            state.meta = data.meta; state.dek = null; state.data = null; state.mode = 'unlock'; render(); toast('已导入（旧库已自动备份为 preimport 文件）');
           } catch (e) { toast('导入失败：' + (e && e.message ? e.message : e)); }
         });
         root.appendChild(input); input.click(); setTimeout(() => input.remove(), 1000);
@@ -1783,14 +1857,14 @@ window.__ModuleLoader__.load({
       /* ---------- start ---------- */
       (async function start() {
         try { const meta = await idbGet('meta'); if (meta && meta.wrappedDEK) { state.meta = meta; state.mode = 'unlock'; } else state.mode = 'create'; }
-        catch (e) { state.mode = 'create'; }
+        catch (e) { state.mode = 'error'; state.error = (e && e.message ? e.message : String(e)); }
         render();
       })();
 
       return function cleanup() {
         try { clearInterval(idleInt); clearTimeout(saveTimer); clearTimeout(toastTimer); } catch (e) {}
         globalOff.forEach(([ev, fn]) => { try { root.removeEventListener(ev, fn); } catch (e) {} });
-        state.dek = null; state.data = null;
+        try { const p = flushSave(); p.finally(() => { state.dek = null; state.data = null; }); } catch (e) { state.dek = null; state.data = null; }
         try { root.innerHTML = ''; } catch (e) {}
       };
     }
