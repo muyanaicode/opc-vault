@@ -277,7 +277,7 @@ window.__ModuleLoader__.load({
         s.onload = () => (window.Tesseract ? res(window.Tesseract) : rej(new Error('OCR 引擎未初始化')));
         s.onerror = () => rej(new Error('OCR 引擎加载失败（可能离线或被页面 CSP 拦截）'));
         document.head.appendChild(s);
-      });
+      }).catch((e) => { _tessP = null; throw e; });
       return _tessP;
     }
     async function ocrImage(dataUrl, onProgress) {
@@ -873,7 +873,9 @@ window.__ModuleLoader__.load({
         state.dek = dek;
         const payload = await idbGet('vault');
         let data = payload ? await decryptObject(dek, payload) : { v: 2, subjects: [], accountSets: [], customFields: [], taxProfiles: {}, apiKeys: [], taxFiled: {}, updatedAt: Date.now() };
+        const beforeMigrate = data;
         data = migrate(data);
+        const migrated = data !== beforeMigrate;
         if (!data.subjects) data.subjects = [];
         if (!data.accountSets) data.accountSets = [];
         if (!data.customFields) data.customFields = [];
@@ -883,6 +885,7 @@ window.__ModuleLoader__.load({
         if (!state.data.taxFiled) state.data.taxFiled = {};
         state.mode = 'app'; state.view = 'overview'; lastActivity = Date.now();
         render();
+        if (migrated) { try { await saveNow(); } catch (e) {} }
       }
 
       async function lock(msg) {
@@ -894,6 +897,7 @@ window.__ModuleLoader__.load({
 
       /* ---------- app shell ---------- */
       function renderApp() {
+        state.armedImage = null;
         if (shell) shell.innerHTML = ''; // clear previous screen (renderApp may be called directly, e.g. tab switch / after import)
         const app = E('div');
         const header = E('div', { class: 'opcv-header' });
@@ -950,9 +954,10 @@ window.__ModuleLoader__.load({
         if (state.view === 'overview') renderOverview();
         else if (state.view === 'subjects') renderSubjects();
         else if (state.view === 'accounts') renderAccounts();
+        else if (state.view === 'relations') renderRelations();
         else if (state.view === 'tax') renderTax();
         else if (state.view === 'keys') renderApiKeys();
-        else renderRelations();
+        else { state.view = 'overview'; renderOverview(); }
       }
 
       /* ---------- overview ---------- */
@@ -1095,7 +1100,7 @@ window.__ModuleLoader__.load({
         } catch (e) { toast('测试失败：' + (e && e.message ? e.message : e) + '（多为浏览器跨域，建议用本地桥 test）'); }
       }
       function keyDueList(){ const now = new Date(); now.setHours(0,0,0,0); const out = []; (state.data.apiKeys || []).forEach((k) => { if (!k.expiresAt) return; const d = new Date(k.expiresAt + 'T00:00:00'); if (isNaN(d)) return; const dl = Math.round((d - now) / 86400000); if (dl <= 30) out.push({ k: k, dl: dl }); }); return out.sort((a, b) => a.dl - b.dl); }
-      async function enableKeyReminders(){ const due = keyDueList(); if (!('Notification' in window)) { toast('当前环境不支持系统通知；' + (due.length ? ('有 ' + due.length + ' 个 Key 临期/过期') : '暂无临期')); return; } try { const p = await Notification.requestPermission(); if (p === 'granted') { toast('已开启密钥到期提醒'); if (due.length) due.slice(0,4).forEach((x) => { try { new Notification('API Key 到期提醒', { body: x.k.name + '（' + (x.k.envName || '') + '）' + (x.dl < 0 ? ('已过期 ' + (-x.dl) + ' 天') : ('剩 ' + x.dl + ' 天')) }); } catch (e) {} }); } else toast('未授权通知'); } catch (e) { toast('通知不可用'); } }
+      async function enableKeyReminders(){ const due = keyDueList(); const items = due.map(x=>({title:x.k.name + '（' + (x.k.envName||'') + '）', sub:(x.k.provider||'')+' · 到期 '+(x.k.expiresAt||''), dl:x.dl})); if (!('Notification' in window)) { toast('当前环境不支持系统通知，已改为页内提醒'); showDueModal('API Key 到期提醒（页内）', items); return; } try { const p = await Notification.requestPermission(); if (p === 'granted') { toast('已开启密钥到期提醒'); if (due.length) due.slice(0,4).forEach((x) => { try { new Notification('API Key 到期提醒', { body: x.k.name + '（' + (x.k.envName || '') + '）' + (x.dl < 0 ? ('已过期 ' + (-x.dl) + ' 天') : ('剩 ' + x.dl + ' 天')) }); } catch (e) {} }); } else { toast('未授权通知，已改为页内提醒'); showDueModal('API Key 到期提醒（页内）', items); } } catch (e) { toast('通知不可用，已改为页内提醒'); showDueModal('API Key 到期提醒（页内）', items); } }
       function openKeyModal(existing){
         openModal(existing ? '编辑密钥' : '新增密钥', (body, close, signal) => {
           const nameI = E('input', { class: 'opcv-input', props: { value: existing ? existing.name : '' } });
@@ -1289,11 +1294,19 @@ window.__ModuleLoader__.load({
         card.appendChild(E('div',{class:'disclosure', text:'提醒口径：月报/季报默认每月/季后 15 日（遇周末顺延；节假日以电子税务局「我的待办」为准）。本工具仅做提醒与清单，不代申报、不代提交。'}));
         contentHost.appendChild(card);
       }
+      function showDueModal(title, items){
+        openModal(title, (body) => {
+          if(!items || !items.length){ body.appendChild(E('div',{class:'opcv-hint', text:'暂无临近到期项。'})); return; }
+          items.slice(0,30).forEach(it=>{ const row=E('div',{class:'opcv-relrow'}); row.appendChild(E('div',{style:'flex:1;min-width:0;'}, E('div',{class:'opcv-relname', text:it.title}), it.sub?E('div',{class:'opcv-muted', style:'margin:2px 0 0;text-align:left;', text:it.sub}):null)); row.appendChild(E('span',{class:'badge '+(it.dl<0?'off':'on'), text:(it.dl<0?'已过期':('剩'+it.dl+'天'))})); body.appendChild(row); });
+          body.appendChild(E('div',{class:'disclosure', text:'系统通知未开启：这是页内提醒。可在浏览器地址栏「站点设置」允许通知以接收系统提醒。'}));
+        });
+      }
       async function enableTaxReminders(){
         const due=taxDueAll();
-        if(!('Notification' in window)){ toast('当前环境不支持系统通知；已在本页提示：'+(due.length?due[0].name:'暂无临近')); return; }
-        try{ const p=await Notification.requestPermission(); if(p==='granted'){ toast('已开启到期提醒'); if(due.length) due.slice(0,4).forEach(t=>{ try{ new Notification('报税提醒 · '+t.subject,{ body:t.name+' · 截止 '+t.due+'（剩'+t.daysLeft+'天）' }); }catch(e){} }); } else toast('未授权系统通知'); }
-        catch(e){ toast('通知不可用：'+(e&&e.message?e.message:e)); }
+        const items=due.map(t=>({title:t.subject+' · '+t.name, sub:'截止 '+t.due+(t.note?' · '+t.note:''), dl:t.daysLeft}));
+        if(!('Notification' in window)){ toast('当前环境不支持系统通知，已改为页内提醒'); showDueModal('报税到期提醒（页内）', items); return; }
+        try{ const p=await Notification.requestPermission(); if(p==='granted'){ toast('已开启到期提醒'); const live=due.slice(0,4); if(live.length) live.forEach(t=>{ try{ new Notification('报税提醒 · '+t.subject,{ body:t.name+' · 截止 '+t.due+'（剩'+t.daysLeft+'天）' }); }catch(e){} }); } else { toast('未授权系统通知，已改为页内提醒'); showDueModal('报税到期提醒（页内）', items); } }
+        catch(e){ toast('通知不可用，已改为页内提醒'); showDueModal('报税到期提醒（页内）', items); }
       }
       function openTaxGuide(){
         openModal('办税向导 · 中国电子税务局（china-etax-wizard）', (body)=>{

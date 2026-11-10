@@ -1,5 +1,5 @@
 /* OPC Vault — service worker (offline app shell). Bump CACHE to force update. */
-const CACHE = 'opc-vault-v4';
+const CACHE = 'opc-vault-v5';
 const ASSETS = [
   './',
   './index.html',

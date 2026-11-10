@@ -75,3 +75,13 @@
 - 模态框 AbortController：关闭即 abort；批量/执照/OCR/改密/密钥保存 await 后检查 signal，防关闭后越界写。
 - Passkey 增加「移除」；PRF 失败时提示（浏览器无法删除已建凭证）。
 - 验证：ego 5243 指示器 未保存…→已保存；编辑后立即锁定、解锁值保留（测试主体B）；税务已申报跨锁持久；5244 模拟 IDB 失败→error 页（重试/从备份恢复）。
+
+## 2026-11-09 · 第15轮（审计剩余小项 + 上线）
+- view 分发补 relations 显式分支；未知 view 归位 overview（不再静默落关系）。
+- 解锁迁移(v1→v2)后立即 saveNow 持久。
+- OCR 引擎加载失败清空 _tessP 可重试（不再永久失败）。
+- 通知不可用/被拒/异常 → 页内提醒弹窗 showDueModal（税务/密钥共用）。
+- 全量 renderApp 时清空 armedImage（防跨页残留粘贴目标）。
+- SW 缓存 v4→v5。
+- 验证：ego 5245 建主体→税务「开启到期提醒」在 Notification 失败时弹「报税到期提醒（页内）」；应用/密钥/税务正常。
+- 上线：push origin main。
