@@ -1411,7 +1411,11 @@
             E('div', { class: 'opcv-li-meta', text: (a.values.accountingYear || '—') + ' · 关联主体 ' + n })
           );
           item.addEventListener('click', () => { state.activeAccount = a.id; renderAccounts(); });
-          list.appendChild(item);
+          item.style.flex = '1';
+          const cp = E('button', { class: 'opcv-btn opcv-small', html: ICON.copy + '<span>复制</span>', attrs: { title: '复制对公账户信息（发客户）' } });
+          cp.addEventListener('click', async (ev) => { ev.stopPropagation(); const ok = await copyText(accountBankText(a)); if (ok) { toast('已复制「' + (a.values.name || '账套') + '」对公账户信息'); } else { openBankInfo(a); toast('剪贴板不可用，已打开文本供手动复制'); } });
+          const rowWrap = E('div', { style: 'display:flex;gap:6px;align-items:stretch;' }, item, cp);
+          list.appendChild(rowWrap);
         });
         listWrap.appendChild(list);
         split.appendChild(listWrap);
