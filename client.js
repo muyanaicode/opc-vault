@@ -1366,6 +1366,43 @@ window.__ModuleLoader__.load({
       }
 
       /* ---------- account sets ---------- */
+      function accountBankText(acc){
+        const v = acc.values || {};
+        const sv0 = (getSubject((acc.subjectIds || [])[0]) || {}).values || {};
+        const useBasic = !!(v.basicAccountNo || v.basicBankName || v.basicAccountName);
+        const p = useBasic ? 'basic' : 'general';
+        const pick = (k) => String(v[p + k] || '').trim();
+        const name = pick('AccountName') || sv0.companyName || '';
+        const bank = pick('BankName'), no = pick('AccountNo'), code = pick('BankCode');
+        const lines = [];
+        lines.push('【收款账户信息】');
+        if (name) lines.push('户名：' + name);
+        if (bank) lines.push('开户行：' + bank);
+        if (no) lines.push('账号：' + no);
+        if (code) lines.push('联行号：' + code);
+        const inv = [];
+        if (sv0.companyName) inv.push('名称：' + sv0.companyName);
+        if (sv0.creditCode) inv.push('统一社会信用代码：' + sv0.creditCode);
+        if (sv0.registeredAddress) inv.push('地址：' + sv0.registeredAddress);
+        if (sv0.companyPhone) inv.push('电话：' + sv0.companyPhone);
+        if (bank || no) inv.push('开户行及账号：' + (bank || '') + ' ' + (no || ''));
+        if (inv.length) { lines.push(''); lines.push('【开票信息】'); inv.forEach((x) => lines.push(x)); }
+        if (!name && !bank && !no) lines.push('（该账套尚未填写对公账户，请先在「账套」中填写基本户或一般户信息）');
+        return lines.join('\n');
+      }
+      function openBankInfo(acc){
+        openModal('对公账户信息 · 发给客户', (body, close) => {
+          body.appendChild(E('div', { class: 'opcv-hint', text: '已按「账套银行账户 + 关联主体开票信息」生成，可编辑后再一键复制发给客户。' }));
+          const ta = E('textarea', { class: 'opcv-input opcv-textarea', style: 'min-height:240px;font-family:ui-monospace,Menlo,Consolas,monospace;', props: { rows: 12 } });
+          ta.value = accountBankText(acc); body.appendChild(ta);
+          const bar = E('div', { class: 'row', style: 'justify-content:flex-end;margin-top:10px;' });
+          const cp = E('button', { class: 'opcv-btn opcv-primary', text: '复制' }); cp.addEventListener('click', async () => { const ok = await copyText(ta.value); toast(ok ? '已复制对公账户信息' : '复制失败'); });
+          const cc = E('button', { class: 'opcv-btn', text: '复制并关闭' }); cc.addEventListener('click', async () => { const ok = await copyText(ta.value); close(); toast(ok ? '已复制对公账户信息' : '复制失败'); });
+          bar.appendChild(cp); bar.appendChild(cc); body.appendChild(bar);
+          body.appendChild(E('div', { class: 'disclosure', text: '含银行账户与开票资料；发送前请核对户名/账号/开户行。' }));
+        });
+      }
+
       function renderAccounts() {
         contentHost.innerHTML = '';
         const split = E('div', { class: 'opcv-split' });
@@ -1404,6 +1441,8 @@ window.__ModuleLoader__.load({
           del.addEventListener('click', () => deleteAccount(acc.id));
           head.appendChild(del);
           detail.appendChild(head);
+          const bankBtn = E('button', { class: 'opcv-btn opcv-small', text: '复制对公账户（发客户）' }); bankBtn.addEventListener('click', () => openBankInfo(acc));
+          detail.appendChild(E('div', { class: 'row', style: 'margin-bottom:8px;' }, bankBtn));
           detail.appendChild(linkSection(acc));
           ACCOUNT_GROUPS.forEach((g) => detail.appendChild(groupCard(acc, g)));
           detail.appendChild(customFieldsCard(acc));
