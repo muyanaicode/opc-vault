@@ -116,3 +116,9 @@
 - 现象：GitHub Pages 已更新，但 DSH 面板仍旧版。查明插件以 link 指向本仓库（client.js 即插件客户端），但本地 bundle 修改后不会自动重建。
 - 处理：按 cordis-plugin-development，用 plugin_manager 先 remove_bundle @local/opc-vault 再 install_bundle 本目录（application=applied），版本 0.1.0→0.2.0；touch client.js 触发 client-hmr，cordis Slots 已显示 sidebar.panellist / main 均注册 opc-vault(active)。
 - 后续：每次改 client.js 需重装 bundle（或让 agent 执行）；Web UI 仍旧时 ⌘R 重载页面即可，无需重启整个 App。Pages 线上不受影响。
+
+## 2026-11-10 · 第21轮（对公账户归属修正：主体级）
+- 数据模型：对公账户从「账套」移到「公司主体」（SUBJECT_GROUPS 新增 bank，ACCOUNT_GROUPS 移除 bank）；同一主体的多个账套共用一套基本户/一般户。
+- 迁移：解锁时 migrateBankToSubjects 把旧账套里的基本户/一般户搬到关联主体（主体无值才写），并清理账套内银行字段；导入旧 JSON 同规则（doCreate → moveBankToSubject）。
+- 复制：主体详情/列表新增「复制对公账户」；账套行复制改读关联主体；无账户时提示去主体填写。
+- 验证：ego 5252 主体甲有基本户/一般户、主体乙空、复制甲含银行；5253 旧账套 bank 导入→迁到迁移甲，迁移乙为空。

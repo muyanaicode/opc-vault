@@ -156,6 +156,19 @@
         { key: 'invoiceSealImage', label: '发票章', type: 'image' },
         { key: 'bankPermitImage', label: '银行开户许可证', type: 'image' },
       ] },
+      { key: 'bank', label: '对公账户', icon: '🏦', fields: [
+        { key: 'basicBankName', label: '基本户 · 开户行', type: 'text' },
+        { key: 'basicAccountName', label: '基本户 · 账户名称', type: 'text' },
+        { key: 'basicAccountNo', label: '基本户 · 账号', type: 'text', mono: true },
+        { key: 'basicAccountPassword', label: '基本户 · 密码 / 取款密码', type: 'secret' },
+        { key: 'basicBankCode', label: '基本户 · 开户行行号', type: 'text', mono: true },
+        { key: 'generalBankName', label: '一般户 · 开户行', type: 'text' },
+        { key: 'generalAccountName', label: '一般户 · 账户名称', type: 'text' },
+        { key: 'generalAccountNo', label: '一般户 · 账号', type: 'text', mono: true },
+        { key: 'generalAccountPassword', label: '一般户 · 密码', type: 'secret' },
+        { key: 'generalBankCode', label: '一般户 · 开户行行号', type: 'text', mono: true },
+        { key: 'accountOpeningDate', label: '基本户 · 开户日期', type: 'date' },
+      ] },
     ];
 
     /* ============================ schema — 账套 ============================ */
@@ -174,19 +187,6 @@
         { key: 'bookkeeper', label: '记账会计', type: 'text' },
         { key: 'reviewer', label: '审核会计', type: 'text' },
         { key: 'supervisor', label: '主管 / 负责人', type: 'text' },
-      ] },
-      { key: 'bank', label: '对公账户', icon: '🏦', fields: [
-        { key: 'basicBankName', label: '基本户 · 开户行', type: 'text' },
-        { key: 'basicAccountName', label: '基本户 · 账户名称', type: 'text' },
-        { key: 'basicAccountNo', label: '基本户 · 账号', type: 'text', mono: true },
-        { key: 'basicAccountPassword', label: '基本户 · 密码 / 取款密码', type: 'secret' },
-        { key: 'basicBankCode', label: '基本户 · 开户行行号', type: 'text', mono: true },
-        { key: 'generalBankName', label: '一般户 · 开户行', type: 'text' },
-        { key: 'generalAccountName', label: '一般户 · 账户名称', type: 'text' },
-        { key: 'generalAccountNo', label: '一般户 · 账号', type: 'text', mono: true },
-        { key: 'generalAccountPassword', label: '一般户 · 密码', type: 'secret' },
-        { key: 'generalBankCode', label: '一般户 · 开户行行号', type: 'text', mono: true },
-        { key: 'accountOpeningDate', label: '基本户 · 开户日期', type: 'date' },
       ] },
       { key: 'tax', label: '税务', icon: '🧾', fields: [
         { key: 'taxBureauUrl', label: '电子税务局网址', type: 'url' },
@@ -253,6 +253,8 @@
     ];
 
     function subjectKeys() { const s = new Set(); SUBJECT_GROUPS.forEach((g) => g.fields.forEach((f) => s.add(f.key))); return s; }
+    const BANK_FIELD_KEYS = ['basicBankName','basicAccountName','basicAccountNo','basicAccountPassword','basicBankCode','generalBankName','generalAccountName','generalAccountNo','generalAccountPassword','generalBankCode','accountOpeningDate'];
+    function moveBankToSubject(subj, acc){ if (!subj || !acc) return; BANK_FIELD_KEYS.forEach((k) => { const v = acc[k]; if (v != null && String(v).trim()) { if (!String(subj[k] || '').trim()) subj[k] = v; delete acc[k]; } }); }
     function accountKeys() { const s = new Set(); ACCOUNT_GROUPS.forEach((g) => g.fields.forEach((f) => s.add(f.key))); return s; }
 
     /* ============================ icons ============================ */
@@ -548,8 +550,8 @@
         const region = REGIONS.find((r) => r.name !== '全国统一（新电子税务局）' && (detail.indexOf(r.name) >= 0 || text.slice(Math.max(0, c.i - 20), c.i).indexOf(r.name) >= 0));
         if (region) acc.region = region.name;
         const isGen = /一般户|一般账户/.test(detail);
-        const bank = detail.match(/(?:开户行|开户银行)[：:\s]*([^\s，,。；;\n]{2,30})/); if (bank) { if (isGen) acc.generalBankName = cleanVal(bank[1]); else acc.basicBankName = cleanVal(bank[1]); }
-        const acct = detail.match(/(?:账号|卡号)[：:\s]*([0-9][0-9\s]{6,30})/); if (acct) { const v = acct[1].replace(/\s/g, ''); if (isGen) acc.generalAccountNo = v; else acc.basicAccountNo = v; }
+        const bank = detail.match(/(?:开户行|开户银行)[：:\s]*([^\s，,。；;\n]{2,30})/); if (bank) { if (isGen) subj.generalBankName = cleanVal(bank[1]); else subj.basicBankName = cleanVal(bank[1]); }
+        const acct = detail.match(/(?:账号|卡号)[：:\s]*([0-9][0-9\s]{6,30})/); if (acct) { const v = acct[1].replace(/\s/g, ''); if (isGen) subj.generalAccountNo = v; else subj.basicAccountNo = v; }
         if (Object.keys(subj).length > 1 || Object.keys(acc).length) recs.push({ subj, acc });
       }
       return recs;
@@ -894,6 +896,19 @@
         return { v: 2, subjects: [subject], accountSets: [account], customFields: data.customFields || [], updatedAt: Date.now() };
       }
 
+      function migrateBankToSubjects(data) {
+        let moved = 0;
+        const subs = data.subjects || [];
+        (data.accountSets || []).forEach((a) => {
+          const av = a.values || {}; const targets = (a.subjectIds || []).map((id) => subs.find((s) => s.id === id)).filter(Boolean);
+          if (!targets.length) return;
+          let any = false;
+          targets.forEach((s) => { s.values = s.values || {}; BANK_FIELD_KEYS.forEach((k) => { const v = av[k]; if (v != null && String(v).trim() && !String(s.values[k] || '').trim()) { s.values[k] = v; moved++; any = true; } }); });
+          if (any) BANK_FIELD_KEYS.forEach((k) => { delete av[k]; });
+        });
+        return moved;
+      }
+
       async function finishUnlock(dek) {
         state.dek = dek;
         const payload = await idbGet('vault');
@@ -901,6 +916,7 @@
         const beforeMigrate = data;
         data = migrate(data);
         const migrated = data !== beforeMigrate;
+        const bankMoved = migrateBankToSubjects(data);
         if (!data.subjects) data.subjects = [];
         if (!data.accountSets) data.accountSets = [];
         if (!data.customFields) data.customFields = [];
@@ -910,7 +926,7 @@
         if (!state.data.taxFiled) state.data.taxFiled = {};
         state.mode = 'app'; state.view = 'overview'; lastActivity = Date.now();
         render();
-        if (migrated) { try { await saveNow(); } catch (e) {} }
+        if (migrated || bankMoved) { try { await saveNow(); } catch (e) {} }
       }
 
       async function lock(msg) {
@@ -1050,7 +1066,10 @@
             E('div', { class: 'opcv-li-meta', text: s.values.creditCode || '未填统一社会信用代码' })
           );
           item.addEventListener('click', () => { state.activeSubject = s.id; renderSubjects(); });
-          list.appendChild(item);
+          item.style.flex = '1';
+          const cp = E('button', { class: 'opcv-btn opcv-small', html: ICON.copy + '<span>复制</span>', attrs: { title: '复制该主体的对公账户信息' } });
+          cp.addEventListener('click', async (ev) => { ev.stopPropagation(); const ok = await copyText(subjectBankText(s)); if (ok) toast('已复制「' + (s.values.companyName || '主体') + '」对公账户信息'); else { openSubjectBankInfo(s); toast('剪贴板不可用，已打开文本供手动复制'); } });
+          list.appendChild(E('div', { style: 'display:flex;gap:6px;align-items:stretch;' }, item, cp));
         });
         listWrap.appendChild(list);
         split.appendChild(listWrap);
@@ -1068,6 +1087,8 @@
           del.addEventListener('click', () => deleteSubject(subj.id));
           head.appendChild(del);
           detail.appendChild(head);
+          const bankBtn = E('button', { class: 'opcv-btn opcv-small', text: '复制对公账户（发客户）' }); bankBtn.addEventListener('click', () => openSubjectBankInfo(subj));
+          detail.appendChild(E('div', { class: 'row', style: 'margin-bottom:8px;' }, bankBtn));
           // related account sets
           const relCard = E('div', { class: 'opcv-card' });
           relCard.appendChild(E('div', { class: 'opcv-cardtitle', text: '所属账套（多对多，只读）' }));
@@ -1356,14 +1377,13 @@
       }
 
       /* ---------- account sets ---------- */
-      function accountBankText(acc){
-        const v = acc.values || {};
-        const sv0 = (getSubject((acc.subjectIds || [])[0]) || {}).values || {};
-        const useBasic = !!(v.basicAccountNo || v.basicBankName || v.basicAccountName);
-        const p = useBasic ? 'basic' : 'general';
-        const pick = (k) => String(v[p + k] || '').trim();
-        const name = pick('AccountName') || sv0.companyName || '';
-        const bank = pick('BankName'), no = pick('AccountNo'), code = pick('BankCode');
+      function bankTextFrom(sv, accv){
+        sv = sv || {}; accv = accv || {};
+        const pick = (k) => { for (const src of [sv, accv]) { const v = String(src[k] || '').trim(); if (v) return v; } return ''; };
+        const hasBasic = !!(pick('basicAccountNo') || pick('basicBankName') || pick('basicAccountName'));
+        const p = hasBasic ? 'basic' : 'general';
+        const name = pick(p + 'AccountName') || sv.companyName || '';
+        const bank = pick(p + 'BankName'), no = pick(p + 'AccountNo'), code = pick(p + 'BankCode');
         const lines = [];
         lines.push('【收款账户信息】');
         if (name) lines.push('户名：' + name);
@@ -1371,20 +1391,22 @@
         if (no) lines.push('账号：' + no);
         if (code) lines.push('联行号：' + code);
         const inv = [];
-        if (sv0.companyName) inv.push('名称：' + sv0.companyName);
-        if (sv0.creditCode) inv.push('统一社会信用代码：' + sv0.creditCode);
-        if (sv0.registeredAddress) inv.push('地址：' + sv0.registeredAddress);
-        if (sv0.companyPhone) inv.push('电话：' + sv0.companyPhone);
+        if (sv.companyName) inv.push('名称：' + sv.companyName);
+        if (sv.creditCode) inv.push('统一社会信用代码：' + sv.creditCode);
+        if (sv.registeredAddress) inv.push('地址：' + sv.registeredAddress);
+        if (sv.companyPhone) inv.push('电话：' + sv.companyPhone);
         if (bank || no) inv.push('开户行及账号：' + (bank || '') + ' ' + (no || ''));
         if (inv.length) { lines.push(''); lines.push('【开票信息】'); inv.forEach((x) => lines.push(x)); }
-        if (!name && !bank && !no) lines.push('（该账套尚未填写对公账户，请先在「账套」中填写基本户或一般户信息）');
+        if (!name && !bank && !no) lines.push('（该主体尚未填写对公账户，请先在「公司主体 → 对公账户」填写基本户或一般户信息）');
         return lines.join('\n');
       }
-      function openBankInfo(acc){
+      function accountBankText(acc){ const sv = (getSubject((acc.subjectIds || [])[0]) || {}).values || {}; return bankTextFrom(sv, acc.values || {}); }
+      function subjectBankText(subj){ return bankTextFrom(subj.values || {}, {}); }
+      function openBankTextModal(text){
         openModal('对公账户信息 · 发给客户', (body, close) => {
-          body.appendChild(E('div', { class: 'opcv-hint', text: '已按「账套银行账户 + 关联主体开票信息」生成，可编辑后再一键复制发给客户。' }));
+          body.appendChild(E('div', { class: 'opcv-hint', text: '已按「公司主体对公账户 + 开票信息」生成，可编辑后再一键复制发给客户。' }));
           const ta = E('textarea', { class: 'opcv-input opcv-textarea', style: 'min-height:240px;font-family:ui-monospace,Menlo,Consolas,monospace;', props: { rows: 12 } });
-          ta.value = accountBankText(acc); body.appendChild(ta);
+          ta.value = text; body.appendChild(ta);
           const bar = E('div', { class: 'row', style: 'justify-content:flex-end;margin-top:10px;' });
           const cp = E('button', { class: 'opcv-btn opcv-primary', text: '复制' }); cp.addEventListener('click', async () => { const ok = await copyText(ta.value); toast(ok ? '已复制对公账户信息' : '复制失败'); });
           const cc = E('button', { class: 'opcv-btn', text: '复制并关闭' }); cc.addEventListener('click', async () => { const ok = await copyText(ta.value); close(); toast(ok ? '已复制对公账户信息' : '复制失败'); });
@@ -1392,6 +1414,8 @@
           body.appendChild(E('div', { class: 'disclosure', text: '含银行账户与开票资料；发送前请核对户名/账号/开户行。' }));
         });
       }
+      function openBankInfo(acc){ openBankTextModal(accountBankText(acc)); }
+      function openSubjectBankInfo(subj){ openBankTextModal(subjectBankText(subj)); }
 
       function renderAccounts() {
         contentHost.innerHTML = '';
@@ -1435,6 +1459,7 @@
           del.addEventListener('click', () => deleteAccount(acc.id));
           head.appendChild(del);
           detail.appendChild(head);
+          detail.appendChild(E('div', { class: 'opcv-hint', style: 'text-align:left;', text: '对公账户属于「公司主体」，请到「公司主体 → 对公账户」维护；同一主体的多个账套共用同一套基本户/一般户。' }));
           const bankBtn = E('button', { class: 'opcv-btn opcv-small', text: '复制对公账户（发客户）' }); bankBtn.addEventListener('click', () => openBankInfo(acc));
           detail.appendChild(E('div', { class: 'row', style: 'margin-bottom:8px;' }, bankBtn));
           detail.appendChild(linkSection(acc));
@@ -1919,9 +1944,10 @@
             if (!recs || !recs.length) { toast('未识别到任何资料'); return; }
             if (!window.confirm('识别到 ' + recs.length + ' 条资料，将创建 ' + recs.length + ' 个公司主体和 ' + recs.length + ' 个账套并自动关联。确认创建？')) return;
             recs.forEach((r) => {
-              const s = { id: uid('s'), values: Object.assign({}, r.subj) };
+              const sv = Object.assign({}, r.subj); const av = Object.assign({}, r.acc); moveBankToSubject(sv, av);
+              const s = { id: uid('s'), values: sv };
               if (!s.values.companyName) s.values.companyName = '未命名主体';
-              const a = { id: uid('a'), values: Object.assign({ name: s.values.companyName + '·账套' + new Date().getFullYear() }, r.acc), subjectIds: [s.id] };
+              const a = { id: uid('a'), values: Object.assign({ name: s.values.companyName + '·账套' + new Date().getFullYear() }, av), subjectIds: [s.id] };
               if (!a.values.taxBureauUrl && a.values.region) a.values.taxBureauUrl = regionUrl(a.values.region);
               state.data.subjects.push(s); state.data.accountSets.push(a);
             });
