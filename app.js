@@ -867,6 +867,11 @@
         card.appendChild(E('h2', { class: 'opcv-h2', text: '解锁 OPC Vault' }));
         card.appendChild(E('p', { class: 'opcv-muted', text: '本机加密存储 · 请输入主密码' + (state.meta && state.meta.passkey ? '，或使用 Passkey' : '') }));
         const pw = E('input', { class: 'opcv-input', props: { type: 'password', placeholder: '主密码', autocomplete: 'current-password' } });
+        const pwRow = E('div', { class: 'opcv-inrow' });
+        pwRow.appendChild(pw);
+        const eye = E('button', { class: 'opcv-iconbtn', html: ICON.eye, attrs: { title: '显示 / 隐藏主密码', type: 'button' } });
+        eye.addEventListener('click', () => { const show = pw.type === 'password'; pw.type = show ? 'text' : 'password'; eye.innerHTML = show ? ICON.eyeOff : ICON.eye; });
+        pwRow.appendChild(eye);
         const err = E('div', { class: 'opcv-err' });
         const btn = E('button', { class: 'opcv-btn opcv-primary', style: 'width:100%;height:38px;justify-content:center;font-size:13.5px;', text: '解锁' });
         const go = async () => {
@@ -880,7 +885,10 @@
           } catch (e) { err.textContent = '解锁失败：' + (e && e.message ? e.message : e); btn.disabled = false; btn.textContent = '解锁'; }
         };
         btn.addEventListener('click', go); pw.addEventListener('keydown', (e) => { if (e.key === 'Enter') go(); });
-        card.appendChild(pw); card.appendChild(err); card.appendChild(btn);
+        card.appendChild(pwRow); card.appendChild(err); card.appendChild(btn);
+        card.appendChild(E('div', { class: 'opcv-hint', style: 'text-align:left;margin-top:10px;', text: '提示：DSH 插件与网页 Demo 是两套独立本地库，主密码不通用；请用创建该库时设置的密码（注意大小写/输入法）。若忘记，可用 Passkey（若已启用）或用导出的 .vault.json 备份恢复。' }));
+        const restoreBtn = E('button', { class: 'opcv-btn opcv-small', style: 'width:100%;margin-top:8px;', text: '从备份文件恢复' });
+        restoreBtn.addEventListener('click', importVault); card.appendChild(restoreBtn);
         if (state.meta && state.meta.passkey) {
           const pk = E('button', { class: 'opcv-btn', style: 'width:100%;height:36px;justify-content:center;margin-top:10px;', html: ICON.key + '<span>使用 Passkey 解锁</span>' });
           pk.addEventListener('click', async () => { err.textContent = ''; if (!passkeyEligible()) { err.textContent = passkeyHint(); return; } try { const dek = await unlockWithPasskey(); await finishUnlock(dek); toast('已通过 Passkey 解锁'); } catch (e) { err.textContent = 'Passkey 解锁失败：' + (e && e.message ? e.message : e); } });
