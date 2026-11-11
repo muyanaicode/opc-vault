@@ -513,7 +513,10 @@ window.__ModuleLoader__.load({
           const sv = (s && s.values) ? s.values : (s || {});
           const sid = (s && s.id) || ('auto' + idx);
           let chosen = obj.accountSets.filter((a) => (a.subjectIds || []).indexOf(sid) >= 0);
-          if (!chosen.length) chosen = obj.accountSets.slice(idx, idx + 1);
+          if (!chosen.length) {
+            const byIdx = obj.accountSets[idx];
+            if (byIdx && (!byIdx.subjectIds || !byIdx.subjectIds.length) && obj.accountSets.length === obj.subjects.length) chosen = [byIdx];
+          }
           if (!chosen.length) out.push({ subj: sv, acc: {} });
           chosen.forEach((a) => out.push({ subj: sv, acc: (a && a.values) ? a.values : (a || {}) }));
         });
