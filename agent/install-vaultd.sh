@@ -1,8 +1,9 @@
 #!/bin/bash
 set -euo pipefail
 REPO="/Users/clarkfan/projects/opc-vault"
-NODE_BIN="$(command -v node || true)"
-[ -n "$NODE_BIN" ] || { echo "node not found"; exit 1; }
+NODE_BIN="/opt/homebrew/bin/node"
+[ -x "$NODE_BIN" ] || NODE_BIN="$(readlink -f "$(command -v node)" 2>/dev/null || true)"
+[ -n "$NODE_BIN" ] && [ -x "$NODE_BIN" ] || { echo "node not found"; exit 1; }
 mkdir -p "$HOME/.opc-vault"
 PLIST="$HOME/Library/LaunchAgents/com.opcvault.vaultd.plist"
 cat > "$PLIST" <<PL
