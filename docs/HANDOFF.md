@@ -111,3 +111,8 @@
 - 账套列表每行新增「复制」按钮（无需进详情）：直接复制该账套对公账户信息；剪贴板不可用时自动打开文本弹窗供手动复制。
 - 验证：ego 5249/5250 行内复制按钮出现；headless 剪贴板失败→自动弹「对公账户信息·发给客户」且含收款/开票文本。
 - 上线：push origin main（SW v9）。
+
+## 2026-11-10 · 第20轮（DSH 插件更新机制排查）
+- 现象：GitHub Pages 已更新，但 DSH 面板仍旧版。查明插件以 link 指向本仓库（client.js 即插件客户端），但本地 bundle 修改后不会自动重建。
+- 处理：按 cordis-plugin-development，用 plugin_manager 先 remove_bundle @local/opc-vault 再 install_bundle 本目录（application=applied），版本 0.1.0→0.2.0；touch client.js 触发 client-hmr，cordis Slots 已显示 sidebar.panellist / main 均注册 opc-vault(active)。
+- 后续：每次改 client.js 需重装 bundle（或让 agent 执行）；Web UI 仍旧时 ⌘R 重载页面即可，无需重启整个 App。Pages 线上不受影响。
