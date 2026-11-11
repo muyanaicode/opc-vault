@@ -137,3 +137,9 @@
 - 解锁页新增密码显示/隐藏、「从备份文件恢复」入口、明确提示：DSH 插件与网页 Demo 是两套独立本地库，主密码不通用。
 - 验证：ego 5258 当前代码锁定/解锁正常；5259 解锁页提示与备份恢复按钮正常。
 - SW v12→v13。
+
+## 2026-11-10 · 第25轮（单一库架构：DSH 与网页共用）
+- 根因：浏览器同源隔离，DSH 插件（dsh-app）与网页（github/localhost）各自一个 IndexedDB，造成“两套库、密码不通用”。
+- 新增单库服务：server.mjs 增 /api/state，持久化 ~/.opc-vault/vault.json（仅密文 0600），固定 127.0.0.1:5240，LaunchAgent com.opcvault.vaultd 常驻。
+- DSH host 新增 /plugins/opc-vault/state（读写同一文件）；client 存储适配：DSH 走 host 路由、5240 网页走 /api/state，其它来源回退 IndexedDB；DSH 首次打开会把现有 IndexedDB 密文自动搬到单库文件（无需密码），页面显示「共用库/本机库」。
+- 验证：临时目录服务+网页创建库→vault.json 落盘；正式 5240 首页 200、state 404（空库）。

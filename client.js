@@ -118,10 +118,60 @@ window.__ModuleLoader__.load({
       });
       return _dbp;
     }
-    async function idbGet(k) { const db = await idb(); return new Promise((res, rej) => { const rq = db.transaction(DB_STORE, 'readonly').objectStore(DB_STORE).get(k); rq.onsuccess = () => res(rq.result); rq.onerror = () => rej(rq.error); }); }
-    async function idbSet(k, v) { const db = await idb(); return new Promise((res, rej) => { const tx = db.transaction(DB_STORE, 'readwrite'); tx.objectStore(DB_STORE).put(v, k); tx.oncomplete = () => res(); tx.onerror = () => rej(tx.error); }); }
-    async function idbSetMany(obj) { const db = await idb(); return new Promise((res, rej) => { const tx = db.transaction(DB_STORE, 'readwrite'); const os = tx.objectStore(DB_STORE); Object.keys(obj).forEach((k) => os.put(obj[k], k)); tx.oncomplete = () => res(); tx.onerror = () => rej(tx.error); }); }
-    async function idbGetMany(keys) { const db = await idb(); return new Promise((res, rej) => { const tx = db.transaction(DB_STORE, 'readonly'); const os = tx.objectStore(DB_STORE); const out = {}; let n = keys.length; keys.forEach((k) => { const rq = os.get(k); rq.onsuccess = () => { out[k] = rq.result; if (--n === 0) res(out); }; rq.onerror = () => rej(rq.error); }); if (!keys.length) res(out); }); }
+    async function localGet(k) { const db = await idb(); return new Promise((res, rej) => { const rq = db.transaction(DB_STORE, 'readonly').objectStore(DB_STORE).get(k); rq.onsuccess = () => res(rq.result); rq.onerror = () => rej(rq.error); }); }
+    async function localSet(k, v) { const db = await idb(); return new Promise((res, rej) => { const tx = db.transaction(DB_STORE, 'readwrite'); tx.objectStore(DB_STORE).put(v, k); tx.oncomplete = () => res(); tx.onerror = () => rej(tx.error); }); }
+    async function localSetMany(obj) { const db = await idb(); return new Promise((res, rej) => { const tx = db.transaction(DB_STORE, 'readwrite'); const os = tx.objectStore(DB_STORE); Object.keys(obj).forEach((k) => os.put(obj[k], k)); tx.oncomplete = () => res(); tx.onerror = () => rej(tx.error); }); }
+    async function localGetMany(keys) { const db = await idb(); return new Promise((res, rej) => { const tx = db.transaction(DB_STORE, 'readonly'); const os = tx.objectStore(DB_STORE); const out = {}; let n = keys.length; keys.forEach((k) => { const rq = os.get(k); rq.onsuccess = () => { out[k] = rq.result; if (--n === 0) res(out); }; rq.onerror = () => rej(rq.error); }); if (!keys.length) res(out); }); }
+
+    // Single-vault mode: DSH plugin uses its host route; local web uses :5240. Both read/write the same ~/.opc-vault/vault.json.
+    function vaultApiUrl() {
+      try {
+        if (typeof window !== 'undefined' && window.__OPC_VAULT_API__) return window.__OPC_VAULT_API__;
+        if (typeof location === 'undefined') return null;
+        if (location.protocol === 'dsh-app:') return '/plugins/opc-vault/state';
+        if ((location.hostname === '127.0.0.1' || location.hostname === 'localhost') && location.port === '5240') return '/api/state';
+        const q = new URLSearchParams(location.search || '');
+        if (q.get('api')) return q.get('api');
+      } catch (e) {}
+      return null;
+    }
+    const VAULT_API = vaultApiUrl();
+    let _storeMode = null, _remoteState = null, _remoteTried = false;
+    async function remoteFetchState(force) {
+      if (_remoteTried && !force) return _remoteState;
+      _remoteTried = true;
+      try {
+        const r = await fetch(VAULT_API, { cache: 'no-store' });
+        if (r.status === 404) { _remoteState = {}; return _remoteState; }
+        if (!r.ok) throw new Error('HTTP ' + r.status);
+        const j = await r.json();
+        _remoteState = (j && typeof j === 'object') ? j : {};
+        return _remoteState;
+      } catch (e) { _remoteState = undefined; return undefined; }
+    }
+    async function remotePutState(st) {
+      const r = await fetch(VAULT_API, { method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify(st) });
+      if (!r.ok) throw new Error('HTTP ' + r.status);
+      _remoteState = st;
+    }
+    async function storageMode() {
+      if (_storeMode) return _storeMode;
+      if (!VAULT_API) { _storeMode = 'local'; return _storeMode; }
+      const st = await remoteFetchState(true);
+      if (st === undefined) { _storeMode = 'local'; return _storeMode; }
+      _storeMode = 'remote'; _remoteState = st;
+      try {
+        if (!Object.keys(st).length && typeof location !== 'undefined' && location.protocol === 'dsh-app:') {
+          const lm = await localGet('meta'); const lv = await localGet('vault');
+          if (lm && lv) { _remoteState = { meta: lm, vault: lv }; await remotePutState(_remoteState); }
+        }
+      } catch (e) {}
+      return _storeMode;
+    }
+    async function idbGet(k) { const m = await storageMode(); if (m === 'remote') { const st = _remoteState || {}; return st[k]; } return localGet(k); }
+    async function idbSet(k, v) { const m = await storageMode(); if (m === 'remote') { const st = Object.assign({}, _remoteState || {}); st[k] = v; await remotePutState(st); return; } return localSet(k, v); }
+    async function idbSetMany(obj) { const m = await storageMode(); if (m === 'remote') { const st = Object.assign({}, _remoteState || {}, obj); await remotePutState(st); return; } return localSetMany(obj); }
+    async function idbGetMany(keys) { const m = await storageMode(); if (m === 'remote') { const st = _remoteState || {}; const out = {}; keys.forEach((k) => { out[k] = st[k]; }); return out; } return localGetMany(keys); }
 
     /* ============================ schema — 公司主体 ============================ */
     const SUBJECT_GROUPS = [
@@ -960,9 +1010,11 @@ window.__ModuleLoader__.load({
           )
         ));
         saveIndicator = E('span', { class: 'opcv-save', text: SAVE_LABEL[saveState] || '已保存' });
+        const storeBadge = E('span', { class: 'opcv-save', style: 'margin-left:8px;opacity:.72;', text: VAULT_API ? '共用库' : '本机库' });
+        storageMode().then((m) => { if (storeBadge.isConnected) storeBadge.textContent = m === 'remote' ? '共用库' : '本机库'; }).catch(() => {});
         const lockBtn = E('button', { class: 'opcv-btn', html: ICON.lock + '<span>锁定</span>' });
         lockBtn.addEventListener('click', () => lock('已锁定'));
-        header.appendChild(E('div', { class: 'opcv-hactions' }, saveIndicator, lockBtn));
+        header.appendChild(E('div', { class: 'opcv-hactions' }, saveIndicator, storeBadge, lockBtn));
         app.appendChild(header);
 
         // toolbar

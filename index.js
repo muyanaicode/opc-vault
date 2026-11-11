@@ -9,7 +9,14 @@
  * rule-based parser, so a missing model never breaks the panel.
  */
 
+import { readFile, writeFile, mkdir, rename } from 'node:fs/promises';
+import { homedir } from 'node:os';
+import { join } from 'node:path';
+
 const ROUTE_PATH = '/plugins/opc-vault/recognize';
+const STATE_ROUTE = '/plugins/opc-vault/state';
+const VAULT_DIR = process.env.OPC_VAULT_DIR || join(homedir(), '.opc-vault');
+const VAULT_FILE = process.env.OPC_VAULT_FILE || join(VAULT_DIR, 'vault.json');
 const MAX_BODY = 1_000_000;
 const MODEL_TIMEOUT_MS = 45_000;
 
@@ -118,6 +125,31 @@ export function apply(ctx) {
         }
       },
     }), 'opc-vault: recognize route');
+
+    ctx.effect(() => webServer.register({
+      kind: 'exact',
+      path: STATE_ROUTE,
+      handler: async (req, res) => {
+        const send = (code, obj) => { if (res.writableEnded) return; res.writeHead(code, { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store' }); res.end(JSON.stringify(obj)); };
+        try {
+          if (req.method === 'OPTIONS') { res.writeHead(204, { 'access-control-allow-origin': '*', 'access-control-allow-methods': 'GET,PUT,OPTIONS', 'access-control-allow-headers': 'content-type' }); return res.end(); }
+          if (req.method !== 'GET' && req.method !== 'PUT') return send(405, { ok: false, error: 'method not allowed' });
+          const conn = ctx.get('connection');
+          if (conn && typeof conn.requestRejection === 'function') { const rejection = conn.requestRejection(req); if (rejection !== undefined) return send(rejection, { ok: false, error: rejection === 401 ? 'unauthorized' : 'forbidden' }); }
+          if (req.method === 'GET') {
+            try { const txt = await readFile(VAULT_FILE, 'utf8'); return send(200, JSON.parse(txt)); }
+            catch (e) { if (e && e.code === 'ENOENT') return send(404, { error: 'empty' }); throw e; }
+          }
+          const body = await readJsonBody(req, 20_000_000);
+          if (!body || typeof body !== 'object' || Array.isArray(body)) return send(400, { ok: false, error: 'state must be object' });
+          await mkdir(VAULT_DIR, { recursive: true, mode: 0o700 });
+          const tmp = VAULT_FILE + '.tmp-' + process.pid;
+          await writeFile(tmp, JSON.stringify(body), { mode: 0o600 });
+          await rename(tmp, VAULT_FILE);
+          return send(200, { ok: true });
+        } catch (e) { return send(500, { ok: false, error: String(e && e.message ? e.message : e) }); }
+      },
+    }), 'opc-vault: state route');
     return true;
   };
 
