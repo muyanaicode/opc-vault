@@ -143,3 +143,8 @@
 - 新增单库服务：server.mjs 增 /api/state，持久化 ~/.opc-vault/vault.json（仅密文 0600），固定 127.0.0.1:5240，LaunchAgent com.opcvault.vaultd 常驻。
 - DSH host 新增 /plugins/opc-vault/state（读写同一文件）；client 存储适配：DSH 走 host 路由、5240 网页走 /api/state，其它来源回退 IndexedDB；DSH 首次打开会把现有 IndexedDB 密文自动搬到单库文件（无需密码），页面显示「共用库/本机库」。
 - 验证：临时目录服务+网页创建库→vault.json 落盘；正式 5240 首页 200、state 404（空库）。
+
+## 2026-11-12 · 第26轮（忘记主密码：备份+重建）
+- 解锁页新增「忘记主密码 · 导出备份并重置」：先自动下载当前加密 .vault.json，再清空单库文件与本地 IndexedDB，回到创建页；设置 opcv_skip_migrate 防止旧库再次自动迁入。
+- 归档：已将 DSH 旧 IndexedDB 与 vault.json 备份到 ~/.opc-vault/archive/（20261112-142937）。
+- 验证：隔离远程库测试重置→API 变 {}、回到创建页；旧备份保留。

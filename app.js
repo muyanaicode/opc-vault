@@ -113,6 +113,38 @@
     async function localSetMany(obj) { const db = await idb(); return new Promise((res, rej) => { const tx = db.transaction(DB_STORE, 'readwrite'); const os = tx.objectStore(DB_STORE); Object.keys(obj).forEach((k) => os.put(obj[k], k)); tx.oncomplete = () => res(); tx.onerror = () => rej(tx.error); }); }
     async function localGetMany(keys) { const db = await idb(); return new Promise((res, rej) => { const tx = db.transaction(DB_STORE, 'readonly'); const os = tx.objectStore(DB_STORE); const out = {}; let n = keys.length; keys.forEach((k) => { const rq = os.get(k); rq.onsuccess = () => { out[k] = rq.result; if (--n === 0) res(out); }; rq.onerror = () => rej(rq.error); }); if (!keys.length) res(out); }); }
 
+    async function localClearVault() {
+      try {
+        if (_dbp) { try { const db = await _dbp; try { db.close(); } catch (e) {} _dbp = null; } catch (e) {} }
+        await new Promise((res) => { const r = indexedDB.deleteDatabase(DB_NAME); r.onsuccess = res; r.onerror = res; r.onblocked = res; });
+      } catch (e) {}
+    }
+    async function downloadEncryptedBackup() {
+      try {
+        const meta = await idbGet('meta'); const vault = await idbGet('vault');
+        if (!meta || !vault) return false;
+        const bundle = { app: 'opc-vault', version: 2, exportedAt: new Date().toISOString(), meta, vault };
+        const blob = new Blob([JSON.stringify(bundle, null, 2)], { type: 'application/json' });
+        const a = document.createElement('a'); a.href = URL.createObjectURL(blob);
+        a.download = 'opc-vault-forgot-' + Date.now() + '.vault.json'; a.click();
+        setTimeout(() => URL.revokeObjectURL(a.href), 3000); return true;
+      } catch (e) { return false; }
+    }
+    async function resetVaultForNewMaster() {
+      if (!window.confirm('将先自动下载一份加密备份，然后清空本机旧库，用新主密码重建。\n旧数据密文会保留在备份文件里（没有旧密码仍不可解密）。继续？')) return;
+      if (!window.confirm('再次确认：现在进入「重建库」流程？')) return;
+      const backed = await downloadEncryptedBackup();
+      await new Promise((r) => setTimeout(r, 800));
+      try {
+        const mode = await storageMode();
+        if (mode === 'remote') await remotePutState({});
+        localStorage.setItem('opcv_skip_migrate', '1');
+        await localClearVault();
+        alert(backed ? '已导出加密备份，正在重建…（点确定后刷新）' : '正在重建…（点确定后刷新）');
+        setTimeout(() => location.reload(), 300);
+      } catch (e) { alert('重置失败：' + (e && e.message ? e.message : e)); }
+    }
+
     // Single-vault mode: DSH plugin uses its host route; local web uses :5240. Both read/write the same ~/.opc-vault/vault.json.
     function vaultApiUrl() {
       try {
@@ -151,7 +183,7 @@
       if (st === undefined) { _storeMode = 'local'; return _storeMode; }
       _storeMode = 'remote'; _remoteState = st;
       try {
-        if (!Object.keys(st).length && typeof location !== 'undefined' && location.protocol === 'dsh-app:') {
+        if (!Object.keys(st).length && typeof location !== 'undefined' && location.protocol === 'dsh-app:' && !localStorage.getItem('opcv_skip_migrate')) {
           const lm = await localGet('meta'); const lv = await localGet('vault');
           if (lm && lv) { _remoteState = { meta: lm, vault: lv }; await remotePutState(_remoteState); }
         }
@@ -939,6 +971,8 @@
         card.appendChild(E('div', { class: 'opcv-hint', style: 'text-align:left;margin-top:10px;', text: '提示：DSH 插件与网页 Demo 是两套独立本地库，主密码不通用；请用创建该库时设置的密码（注意大小写/输入法）。若忘记，可用 Passkey（若已启用）或用导出的 .vault.json 备份恢复。' }));
         const restoreBtn = E('button', { class: 'opcv-btn opcv-small', style: 'width:100%;margin-top:8px;', text: '从备份文件恢复' });
         restoreBtn.addEventListener('click', importVault); card.appendChild(restoreBtn);
+        const forgotBtn = E('button', { class: 'opcv-btn opcv-small del', style: 'width:100%;margin-top:8px;', text: '忘记主密码 · 导出备份并重置' });
+        forgotBtn.addEventListener('click', resetVaultForNewMaster); card.appendChild(forgotBtn);
         if (state.meta && state.meta.passkey) {
           const pk = E('button', { class: 'opcv-btn', style: 'width:100%;height:36px;justify-content:center;margin-top:10px;', html: ICON.key + '<span>使用 Passkey 解锁</span>' });
           pk.addEventListener('click', async () => { err.textContent = ''; if (!passkeyEligible()) { err.textContent = passkeyHint(); return; } try { const dek = await unlockWithPasskey(); await finishUnlock(dek); toast('已通过 Passkey 解锁'); } catch (e) { err.textContent = 'Passkey 解锁失败：' + (e && e.message ? e.message : e); } });
