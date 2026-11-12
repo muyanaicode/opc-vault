@@ -148,3 +148,8 @@
 - 解锁页新增「忘记主密码 · 导出备份并重置」：先自动下载当前加密 .vault.json，再清空单库文件与本地 IndexedDB，回到创建页；设置 opcv_skip_migrate 防止旧库再次自动迁入。
 - 归档：已将 DSH 旧 IndexedDB 与 vault.json 备份到 ~/.opc-vault/archive/（20261112-142937）。
 - 验证：隔离远程库测试重置→API 变 {}、回到创建页；旧备份保留。
+
+## 2026-11-12 · 第27轮（忘记密码 / Passkey）
+- 当前单库 createdAt=2026-11-08 06:07（插件初装时库，非近期主库）；旧 IndexedDB 与 vault.json 已归档到 ~/.opc-vault/archive/。
+- 解锁页新增「忘记主密码 · 导出备份并重置」；Passkey 指引改为必须用 Chrome/Edge 打开 http://localhost:5240（127/IP 与 DSH 内嵌窗口不支持 WebAuthn）。
+- 验证：localhost:5262 isSecureContext=true、Passkey 按钮可用；重置隔离测试回到创建页。

@@ -441,7 +441,7 @@
         if (!window.isSecureContext) { r.reason = 'INSECURE'; r.msg = '当前不是安全上下文（需 HTTPS 或 http://localhost）。'; return r; }
         const isHttps = location.protocol === 'https:';
         const isLocalhost = location.hostname === 'localhost';
-        if (!isHttps && !isLocalhost) { r.reason = 'ORIGIN_IP'; r.msg = '当前地址 ' + location.origin + ' 既非 HTTPS 也非 http://localhost；WebAuthn 不允许在 IP 源启用 Passkey。请把地址栏的 127.0.0.1 改成 localhost（端口与 token 不变）再打开。'; return r; }
+        if (!isHttps && !isLocalhost) { r.reason = 'ORIGIN_IP'; r.msg = '当前地址 ' + location.origin + ' 既非 HTTPS 也非 http://localhost；WebAuthn 不允许在 IP/内嵌窗口启用 Passkey。请用 Chrome/Edge 打开 http://localhost:5240（单一共用库）后再启用。'; return r; }
         r.ok = true; return r;
       } catch (e) { r.reason = 'ERROR'; r.msg = 'Passkey 环境检测失败：' + (e && e.message ? e.message : e); return r; }
     }
@@ -1918,7 +1918,7 @@
             + '<li><b>需要平台验证器</b>：macOS 的 Touch ID / Face ID，或外接安全密钥，并在系统中启用。</li>'
             + '<li>若在 <b>DeepSeek Harness 桌面内嵌窗口</b>中，WebAuthn 可能被内嵌环境禁用 —— 请改用 Chrome/Edge 打开同一地址。</li>'
             + '</ol>'
-            + '<p style="margin:10px 0 0;"><b>macOS 推荐做法：</b>用 Chrome 打开 <code>http://localhost:' + (location.port || '64389') + '</code> → 进入 OPC Vault → 点「启用 Passkey」→ Touch ID 验证。</p>'
+            + '<p style="margin:10px 0 0;"><b>macOS 推荐做法：</b>用 Chrome/Edge 打开 <code>http://localhost:5240</code>（与插件共用同一库）→ 进入 OPC Vault → 点「启用 Passkey」→ Touch ID 验证。</p>'
             + '<p style="margin:8px 0 0;color:var(--dsw-alias-label-secondary);">主密码解锁始终可用，不受影响。</p>';
           body.appendChild(E('div', { class: 'opcv-hint', html }));
         });
